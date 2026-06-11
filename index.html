@@ -937,22 +937,53 @@ function tinySound() {
   } catch (e) { /* silencieux */ }
 }
 
-/* ===================== Stockage partagé ===================== */
-const HAS_STORAGE = typeof window.storage !== 'undefined' && window.storage && typeof window.storage.get === 'function';
+/* ===================== Stockage partagé =====================
+   Deux backends possibles, choisis au chargement :
+   - window.storage : API de l'artefact Claude.ai (compatibilité).
+   - api/storage.php : backend PHP/MySQL (déploiement autonome WampServer).
+   Le reste de l'application ne connaît que sget/sset/slist/sdel
+   et le drapeau HAS_STORAGE — seul ce bloc change selon le backend. */
+const USE_ARTIFACT = typeof window.storage !== 'undefined' && window.storage && typeof window.storage.get === 'function';
+const USE_PHP = !USE_ARTIFACT && /^https?:$/.test(location.protocol);
+const HAS_STORAGE = USE_ARTIFACT || USE_PHP;
+const API_URL = 'api/storage.php';
+
+async function apiStorage(action, payload) {
+  const res = await fetch(API_URL, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    credentials: 'same-origin',           // cookie de session PHP (stockage personnel)
+    body: JSON.stringify(Object.assign({ action }, payload))
+  });
+  if (!res.ok) throw new Error('HTTP ' + res.status);
+  return await res.json();
+}
+
 async function sget(key, shared = true) {
   if (!HAS_STORAGE) return null;
-  try { const r = await window.storage.get(key, shared); return r && r.value != null ? JSON.parse(r.value) : null; }
-  catch (e) { return null; }
+  try {
+    const r = USE_ARTIFACT
+      ? await window.storage.get(key, shared)
+      : await apiStorage('get', { key, shared });
+    return r && r.value != null ? JSON.parse(r.value) : null;
+  } catch (e) { return null; }
 }
 async function sset(key, val, shared = true) {
   if (!HAS_STORAGE) return false;
-  try { const r = await window.storage.set(key, JSON.stringify(val), shared); return !!r; }
-  catch (e) { console.error('storage.set', key, e); return false; }
+  try {
+    if (USE_ARTIFACT) { const r = await window.storage.set(key, JSON.stringify(val), shared); return !!r; }
+    const r = await apiStorage('set', { key, value: JSON.stringify(val), shared });
+    return !!(r && r.ok);
+  } catch (e) { console.error('storage.set', key, e); return false; }
 }
 async function slist(prefix, shared = true) {
   if (!HAS_STORAGE) return [];
-  try { const r = await window.storage.list(prefix, shared); return (r && r.keys) || []; }
-  catch (e) { return []; }
+  try {
+    const r = USE_ARTIFACT
+      ? await window.storage.list(prefix, shared)
+      : await apiStorage('list', { prefix, shared });
+    return (r && r.keys) || [];
+  } catch (e) { return []; }
 }
 
 /* ===================== Couche "Partie" (G) ===================== */
@@ -2086,7 +2117,11 @@ function isAdmin() { return !!(currentUser && currentUser.role === 'admin'); }
 
 async function sdel(key, shared = true) {
   if (!HAS_STORAGE) return false;
-  try { await window.storage.delete(key, shared); return true; } catch (e) { return false; }
+  try {
+    if (USE_ARTIFACT) { await window.storage.delete(key, shared); return true; }
+    const r = await apiStorage('delete', { key, shared });
+    return !!(r && r.ok);
+  } catch (e) { return false; }
 }
 
 async function adminLog(action) {
