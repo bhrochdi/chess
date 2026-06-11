@@ -1,0 +1,2371 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Le Cercle — Plateforme d'Échecs en ligne</title>
+<style>
+  :root {
+    --bg: #14110d;
+    --panel: #211b14;
+    --panel-edge: #3a2f21;
+    --sq-light: #e3cfa7;
+    --sq-dark: #7a5436;
+    --gold: #c99b4a;
+    --check: #a33b2e;
+    --green: #6e8b4e;
+    --ink: #e9dfc8;
+    --muted: #9c8e72;
+    --paper: #efe6d0;
+    --paper-ink: #2b231a;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    background: var(--bg);
+    background-image: radial-gradient(ellipse at 50% 0%, #1d1812 0%, var(--bg) 60%);
+    color: var(--ink);
+    font-family: Georgia, 'Times New Roman', serif;
+    min-height: 100vh;
+    padding: 18px 14px 60px;
+  }
+  header { text-align: center; margin-bottom: 14px; }
+  header h1 { font-size: clamp(24px, 3.5vw, 36px); font-weight: 400; letter-spacing: .18em; text-transform: uppercase; }
+  header h1 .knight { color: var(--gold); margin: 0 10px; }
+  header p { color: var(--muted); font-size: 12px; letter-spacing: .28em; text-transform: uppercase; margin-top: 4px; }
+  .rule { width: 140px; height: 1px; background: linear-gradient(90deg, transparent, var(--gold), transparent); margin: 12px auto; }
+
+  /* ---------- Navigation ---------- */
+  nav { display: flex; justify-content: center; gap: 8px; flex-wrap: wrap; margin-bottom: 20px; }
+  nav button {
+    background: var(--panel); color: var(--muted);
+    border: 1px solid var(--panel-edge); border-radius: 4px;
+    font-family: inherit; font-size: 13px; letter-spacing: .12em; text-transform: uppercase;
+    padding: 9px 16px; cursor: pointer; position: relative;
+    transition: color .15s, border-color .15s;
+  }
+  nav button:hover { color: var(--ink); border-color: var(--gold); }
+  nav button.active { color: #1c1611; background: var(--gold); border-color: var(--gold); font-weight: bold; }
+  nav button .badge {
+    position: absolute; top: -7px; right: -7px;
+    background: var(--check); color: #fff; border-radius: 50%;
+    font-size: 11px; min-width: 18px; height: 18px; line-height: 18px;
+    padding: 0 3px; letter-spacing: 0;
+  }
+  .banner {
+    max-width: 980px; margin: 0 auto 16px;
+    background: #3a2417; border: 1px solid var(--check); border-radius: 4px;
+    padding: 10px 14px; font-size: 14px; display: none;
+  }
+  .banner.show { display: block; }
+
+  .view { display: none; max-width: 1060px; margin: 0 auto; }
+  .view.active { display: block; }
+
+  /* ---------- Cartes génériques ---------- */
+  .card { background: var(--panel); border: 1px solid var(--panel-edge); border-radius: 6px; padding: 16px; }
+  .card h2 { font-size: 11px; font-weight: 400; letter-spacing: .25em; text-transform: uppercase; color: var(--muted); margin-bottom: 12px; }
+  .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  .stack { display: flex; flex-direction: column; gap: 16px; }
+  button, select, input[type=text] {
+    font-family: inherit; background: #2c2418; color: var(--ink);
+    border: 1px solid var(--panel-edge); border-radius: 4px;
+    padding: 9px 12px; font-size: 14px;
+  }
+  button { cursor: pointer; transition: border-color .15s, background .15s; }
+  button:hover { border-color: var(--gold); }
+  button:focus-visible, select:focus-visible, input:focus-visible, .sq:focus-visible { outline: 2px solid var(--gold); outline-offset: 2px; }
+  button.primary { background: var(--gold); color: #1c1611; border-color: var(--gold); font-weight: bold; }
+  button.primary:hover { background: #d9ad5f; }
+  button.danger { border-color: #6e3a30; color: #d98b7d; }
+  button.danger:hover { border-color: var(--check); }
+  button:disabled { opacity: .4; cursor: not-allowed; }
+  label.opt { font-size: 11px; color: var(--muted); letter-spacing: .12em; text-transform: uppercase; display: block; margin-bottom: 4px; }
+  .small { font-size: 12px; color: var(--muted); }
+  .pseudo-tag { color: var(--gold); }
+
+  /* ---------- Listes (joueurs, parties) ---------- */
+  .list { display: flex; flex-direction: column; gap: 6px; max-height: 300px; overflow-y: auto; }
+  .list .item {
+    display: flex; align-items: center; justify-content: space-between; gap: 8px;
+    background: #1a1510; border: 1px solid #2c2418; border-radius: 4px;
+    padding: 8px 12px; font-size: 14px;
+  }
+  .list .item .dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: var(--green); margin-right: 8px; }
+  .list .item button { padding: 5px 12px; font-size: 13px; }
+  .list:empty::after { content: attr(data-empty); color: var(--muted); font-style: italic; font-size: 13px; }
+
+  /* ---------- Plateau ---------- */
+  .game-layout { display: flex; gap: 24px; align-items: flex-start; flex-wrap: wrap; justify-content: center; }
+  .board-col { display: flex; flex-direction: column; gap: 10px; }
+  .board-wrap { background: var(--panel); border: 1px solid var(--panel-edge); border-radius: 6px; padding: 16px; box-shadow: 0 18px 50px rgba(0,0,0,.55); }
+  .board-frame { display: grid; grid-template-columns: 20px auto; grid-template-rows: auto 20px; }
+  .ranks { display: grid; grid-template-rows: repeat(8, 1fr); }
+  .ranks span, .files span { display: flex; align-items: center; justify-content: center; color: var(--muted); font-size: 11px; }
+  .files { grid-column: 2; display: grid; grid-template-columns: repeat(8, 1fr); }
+  .board { display: grid; grid-template-columns: repeat(8, var(--cell, 58px)); grid-template-rows: repeat(8, var(--cell, 58px)); border: 3px solid #4a3823; box-shadow: inset 0 0 0 1px rgba(0,0,0,.4); user-select: none; }
+  .sq { display: flex; align-items: center; justify-content: center; font-size: calc(var(--cell, 58px) * .72); cursor: pointer; position: relative; line-height: 1; }
+  .sq.light { background: var(--sq-light); }
+  .sq.dark { background: var(--sq-dark); }
+  .sq.lastmove::after { content: ''; position: absolute; inset: 0; background: rgba(201,155,74,.35); pointer-events: none; }
+  .sq.selected { outline: 3px solid var(--gold); outline-offset: -3px; z-index: 1; }
+  .sq.move-hint::before { content: ''; position: absolute; width: 26%; height: 26%; border-radius: 50%; background: rgba(20,17,13,.45); }
+  .sq.capture-hint::before { content: ''; position: absolute; inset: 6%; border: 3px solid rgba(163,59,46,.75); border-radius: 50%; }
+  .sq.in-check { box-shadow: inset 0 0 0 4px var(--check); animation: pulse 1s ease-in-out infinite alternate; }
+  @keyframes pulse { from { box-shadow: inset 0 0 0 3px var(--check); } to { box-shadow: inset 0 0 12px 4px var(--check); } }
+  @media (prefers-reduced-motion: reduce) { .sq.in-check { animation: none; } }
+  .piece-w { color: #faf6ec; text-shadow: 0 1px 2px rgba(0,0,0,.65), 0 0 1px #000; }
+  .piece-b { color: #1c1611; text-shadow: 0 1px 1px rgba(255,255,255,.18); }
+
+  /* ---------- Pendules ---------- */
+  .clockbar { display: flex; justify-content: space-between; align-items: center; gap: 10px; }
+  .clock {
+    background: #100d09; border: 1px solid var(--panel-edge); border-radius: 4px;
+    font-variant-numeric: tabular-nums; font-size: 24px; padding: 6px 16px; min-width: 110px; text-align: center;
+    color: var(--muted);
+  }
+  .clock .who { display: block; font-size: 10px; letter-spacing: .2em; text-transform: uppercase; }
+  .clock.running { color: var(--ink); border-color: var(--gold); box-shadow: 0 0 12px rgba(201,155,74,.25); }
+  .clock.flag { color: var(--check); border-color: var(--check); }
+
+  /* ---------- Panneau latéral du jeu ---------- */
+  .side { width: 320px; display: flex; flex-direction: column; gap: 14px; }
+  .captures .cap-row { font-size: 21px; min-height: 26px; letter-spacing: 2px; }
+  .captures .lbl { font-size: 11px; color: var(--muted); letter-spacing: .15em; text-transform: uppercase; margin-right: 8px; }
+  .captures .score { font-size: 13px; color: var(--gold); margin-left: 6px; font-style: italic; }
+  .status-line { font-size: 16px; min-height: 22px; }
+  .status-line .turn-dot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 8px; border: 1px solid var(--muted); }
+
+  .scoresheet { background: var(--paper); color: var(--paper-ink); border-radius: 4px; padding: 12px 14px; box-shadow: inset 0 0 30px rgba(120,90,40,.12), 0 8px 22px rgba(0,0,0,.4); }
+  .scoresheet h2 { color: #6b5a3e; border-bottom: 1px solid #c9b890; padding-bottom: 5px; font-size: 11px; letter-spacing: .25em; text-transform: uppercase; font-weight: 400; margin-bottom: 8px; }
+  .movelist { max-height: 190px; overflow-y: auto; font-size: 14px; display: grid; grid-template-columns: 2.2em 1fr 1fr; column-gap: 8px; row-gap: 2px; }
+  .movelist .num { color: #8a7450; text-align: right; }
+  .movelist .ply { border-bottom: 1px dotted #cdbd96; padding: 1px 2px; }
+  .movelist .ply.latest { background: rgba(201,155,74,.25); border-radius: 2px; }
+  .movelist:empty::after { content: 'En attente du premier coup…'; grid-column: 1 / -1; color: #9a8a68; font-style: italic; }
+
+  /* ---------- Chats ---------- */
+  .chatbox { display: flex; flex-direction: column; }
+  .chatlog { flex: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 6px; padding: 4px 2px; min-height: 120px; max-height: 320px; }
+  .msg { font-size: 14px; line-height: 1.45; }
+  .msg .from { color: var(--gold); }
+  .msg .from.me { color: var(--green); }
+  .msg .time { color: var(--muted); font-size: 11px; margin-left: 6px; }
+  .msg.sys { color: var(--muted); font-style: italic; font-size: 13px; }
+  .chatinput { display: flex; gap: 8px; margin-top: 10px; }
+  .chatinput input { flex: 1; }
+  .chatlog:empty::after { content: attr(data-empty); color: var(--muted); font-style: italic; font-size: 13px; }
+
+  /* ---------- Messagerie privée ---------- */
+  .dm-layout { display: grid; grid-template-columns: 260px 1fr; gap: 16px; min-height: 420px; }
+  .threads { display: flex; flex-direction: column; gap: 6px; overflow-y: auto; max-height: 460px; }
+  .threads .th {
+    text-align: left; display: flex; justify-content: space-between; align-items: center;
+    background: #1a1510; border: 1px solid #2c2418;
+  }
+  .threads .th.active { border-color: var(--gold); }
+  .threads .th .badge { background: var(--check); color: #fff; border-radius: 50%; font-size: 11px; min-width: 18px; height: 18px; line-height: 18px; text-align: center; }
+
+  /* ---------- Modales ---------- */
+  .overlay { position: fixed; inset: 0; background: rgba(10,8,5,.72); display: none; align-items: center; justify-content: center; z-index: 10; }
+  .overlay.show { display: flex; }
+  .modal { background: var(--panel); border: 1px solid var(--gold); border-radius: 8px; padding: 26px 30px; text-align: center; box-shadow: 0 24px 70px rgba(0,0,0,.7); max-width: 92vw; width: 380px; }
+  .modal h3 { font-weight: 400; letter-spacing: .12em; margin-bottom: 14px; }
+  .modal .fields { display: flex; flex-direction: column; gap: 12px; text-align: left; margin-bottom: 16px; }
+  .promo-choices { display: flex; gap: 12px; justify-content: center; }
+  .promo-choices button { font-size: 40px; width: 66px; height: 66px; padding: 0; }
+  .modal p { font-size: 14px; color: var(--muted); margin-bottom: 14px; }
+
+  /* ---------- Authentification ---------- */
+  .modal { position: relative; }
+  .modal-close { position: absolute; top: 8px; right: 10px; background: none; border: none; color: var(--muted); font-size: 18px; padding: 4px 8px; }
+  .modal-close:hover { color: var(--ink); border: none; background: none; }
+  input[type=password] { font-family: inherit; background: #2c2418; color: var(--ink); border: 1px solid var(--panel-edge); border-radius: 4px; padding: 9px 12px; font-size: 14px; }
+  .auth-tabs { display: flex; margin-bottom: 14px; border: 1px solid var(--panel-edge); border-radius: 4px; overflow: hidden; }
+  .auth-tabs button { flex: 1; border: none; border-radius: 0; background: #1a1510; color: var(--muted); }
+  .auth-tabs button.active { background: var(--gold); color: #1c1611; font-weight: bold; }
+  .sso-btn { width: 100%; display: flex; align-items: center; justify-content: center; gap: 10px; margin-bottom: 8px; font-size: 14px; }
+  .sso-btn .ico { display: inline-flex; align-items: center; justify-content: center; width: 22px; height: 22px; border-radius: 50%; font-weight: bold; font-family: Arial, sans-serif; font-size: 14px; }
+  .sso-btn.google { background: #f5f2ea; color: #2b231a; border-color: #f5f2ea; }
+  .sso-btn.google .ico { background: #fff; color: #4285F4; border: 1px solid #ddd; }
+  .sso-btn.facebook { background: #1877F2; color: #fff; border-color: #1877F2; }
+  .sso-btn.facebook .ico { background: #fff; color: #1877F2; }
+  .divider { display: flex; align-items: center; gap: 10px; color: var(--muted); font-size: 12px; margin: 12px 0; }
+  .divider::before, .divider::after { content: ''; flex: 1; height: 1px; background: var(--panel-edge); }
+  .warn { color: #d9a85f !important; }
+
+  /* ---------- Administration ---------- */
+  .stat-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 10px; }
+  .stat-card { background: #1a1510; border: 1px solid #2c2418; border-radius: 4px; padding: 12px; text-align: center; }
+  .stat-card .n { font-size: 26px; color: var(--gold); font-variant-numeric: tabular-nums; }
+  .stat-card .l { font-size: 11px; color: var(--muted); letter-spacing: .12em; text-transform: uppercase; margin-top: 4px; }
+  .admin-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  .admin-table th { text-align: left; color: var(--muted); font-weight: 400; font-size: 11px; letter-spacing: .12em; text-transform: uppercase; padding: 6px 8px; border-bottom: 1px solid var(--panel-edge); }
+  .admin-table td { padding: 7px 8px; border-bottom: 1px solid #2c2418; vertical-align: middle; }
+  .admin-table td.actions { display: flex; gap: 5px; flex-wrap: wrap; }
+  .admin-table td.actions button { padding: 4px 8px; font-size: 12px; }
+  .role-badge { background: var(--gold); color: #1c1611; font-size: 10px; letter-spacing: .1em; padding: 2px 6px; border-radius: 3px; vertical-align: middle; }
+  .ban-badge { background: var(--check); color: #fff; font-size: 10px; letter-spacing: .1em; padding: 2px 6px; border-radius: 3px; vertical-align: middle; }
+  .dangerzone { margin-top: 12px; border: 1px dashed #6e3a30; border-radius: 4px; padding: 10px; }
+
+  .toolbar { display: flex; gap: 8px; flex-wrap: wrap; }
+  .toolbar button { flex: 1; min-width: 110px; font-size: 13px; }
+
+  @media (max-width: 820px) {
+    .grid2, .dm-layout { grid-template-columns: 1fr; }
+    .board { --cell: min(10.6vw, 46px); }
+    .side { width: 100%; max-width: 500px; }
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>Le<span class="knight">♞</span>Cercle</h1>
+  <p>Plateforme d'échecs en ligne</p>
+  <div class="rule"></div>
+</header>
+
+<div class="banner" id="offlineBanner">
+  ⚠️ Le stockage partagé n'est pas disponible dans cet environnement : les fonctions en ligne (parties, salon, messagerie) sont désactivées. Le jeu local et l'IA restent pleinement fonctionnels.
+</div>
+
+<nav>
+  <button data-view="home" class="active">Accueil</button>
+  <button data-view="local">Jeu local &amp; IA</button>
+  <button data-view="online" id="navOnline">Partie en ligne</button>
+  <button data-view="salon">Salon <span class="badge" id="salonBadge" hidden></span></button>
+  <button data-view="dm">Messages <span class="badge" id="dmBadge" hidden></span></button>
+  <button data-view="admin" id="navAdmin" style="display:none">⚙ Admin</button>
+</nav>
+
+<!-- ================= ACCUEIL / LOBBY ================= -->
+<div class="view active" id="view-home">
+  <div class="stack">
+    <div class="card" id="profileCard">
+      <h2>Mon profil</h2>
+      <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap">
+        <span id="profileLine" class="small">Connecte-toi pour accéder aux fonctions en ligne.</span>
+        <button class="primary" id="btnAuth">Connexion / Créer un compte</button>
+        <button id="btnLogout" style="display:none">Déconnexion</button>
+        <button id="btnExportDb" style="display:none" title="Télécharger la base utilisateurs au format JSON">⤓ Base JSON</button>
+      </div>
+      <p class="small" style="margin-top:10px">
+        ℹ️ Les parties en ligne, le salon et la messagerie utilisent le <strong>stockage partagé</strong> de cette
+        application : les contenus publiés sont visibles par les autres utilisateurs (la messagerie n'est pas chiffrée).
+        La synchronisation se fait toutes les 2 à 3 secondes.
+      </p>
+    </div>
+
+    <div class="grid2">
+      <div class="card">
+        <h2>Créer une partie en ligne</h2>
+        <div class="stack" style="gap:10px">
+          <div>
+            <label class="opt" for="newTc">Cadence</label>
+            <select id="newTc" style="width:100%">
+              <option value="180|2">Blitz — 3 min + 2 s</option>
+              <option value="300|0" selected>Blitz — 5 min</option>
+              <option value="600|0">Rapide — 10 min</option>
+              <option value="900|10">Rapide — 15 min + 10 s</option>
+              <option value="inf">Sans pendule</option>
+            </select>
+          </div>
+          <div>
+            <label class="opt" for="newColor">Je joue</label>
+            <select id="newColor" style="width:100%">
+              <option value="random" selected>Couleur aléatoire</option>
+              <option value="w">Les Blancs</option>
+              <option value="b">Les Noirs</option>
+            </select>
+          </div>
+          <button class="primary" id="btnCreateGame">♟ Créer et attendre un adversaire</button>
+        </div>
+      </div>
+
+      <div class="card">
+        <h2>Joueurs en ligne</h2>
+        <div class="list" id="playersList" data-empty="Personne en ligne pour le moment."></div>
+      </div>
+    </div>
+
+    <div class="grid2">
+      <div class="card">
+        <h2>Parties ouvertes — défis à relever</h2>
+        <div class="list" id="openGames" data-empty="Aucun défi en attente. Crée le tien !"></div>
+      </div>
+      <div class="card">
+        <h2>Parties en cours — à regarder</h2>
+        <div class="list" id="liveGames" data-empty="Aucune partie en cours."></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ================= JEU LOCAL ================= -->
+<div class="view" id="view-local">
+  <div class="game-layout">
+    <div class="board-col">
+      <div class="clockbar" id="localClocks"></div>
+      <div class="board-wrap">
+        <div class="board-frame">
+          <div class="ranks"></div>
+          <div class="board" id="localBoard" role="grid" aria-label="Échiquier local"></div>
+          <div></div>
+          <div class="files"></div>
+        </div>
+      </div>
+    </div>
+    <div class="side">
+      <div class="card">
+        <h2>Partie locale</h2>
+        <div class="status-line" id="localStatus"></div>
+        <div class="captures" style="margin-top:10px">
+          <div class="cap-row"><span class="lbl">Blancs</span><span data-cap="w"></span><span class="score" data-score="w"></span></div>
+          <div class="cap-row"><span class="lbl">Noirs</span><span data-cap="b"></span><span class="score" data-score="b"></span></div>
+        </div>
+      </div>
+      <div class="scoresheet">
+        <h2>Feuille de partie</h2>
+        <div class="movelist" id="localMoves"></div>
+      </div>
+      <div class="card stack" style="gap:10px">
+        <div>
+          <label class="opt" for="localMode">Adversaire</label>
+          <select id="localMode" style="width:100%">
+            <option value="human">Deux joueurs (même écran)</option>
+            <option value="ai-2">Ordinateur — débutant</option>
+            <option value="ai-3" selected>Ordinateur — club</option>
+            <option value="ai-4">Ordinateur — maître (réflexion longue)</option>
+          </select>
+        </div>
+        <div>
+          <label class="opt" for="localTc">Cadence</label>
+          <select id="localTc" style="width:100%">
+            <option value="inf" selected>Sans pendule</option>
+            <option value="180|2">3 min + 2 s</option>
+            <option value="300|0">5 min</option>
+            <option value="600|0">10 min</option>
+            <option value="900|10">15 min + 10 s</option>
+          </select>
+        </div>
+        <div class="toolbar">
+          <button class="primary" id="btnLocalNew">Nouvelle partie</button>
+          <button id="btnLocalUndo">↶ Annuler</button>
+        </div>
+        <div class="toolbar">
+          <button id="btnLocalFlip">⇅ Retourner</button>
+          <button id="btnLocalPgn">⤓ Export PGN</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ================= PARTIE EN LIGNE ================= -->
+<div class="view" id="view-online">
+  <div class="card" id="onlineEmpty">
+    <h2>Partie en ligne</h2>
+    <p class="small">Aucune partie active. Va sur l'<strong>Accueil</strong> pour créer un défi, en rejoindre un, ou regarder une partie en cours.</p>
+  </div>
+  <div class="game-layout" id="onlineGameUI" style="display:none">
+    <div class="board-col">
+      <div class="clockbar" id="onlineClocks"></div>
+      <div class="board-wrap">
+        <div class="board-frame">
+          <div class="ranks"></div>
+          <div class="board" id="onlineBoard" role="grid" aria-label="Échiquier en ligne"></div>
+          <div></div>
+          <div class="files"></div>
+        </div>
+      </div>
+      <div class="card">
+        <div class="status-line" id="onlineStatus"></div>
+        <div class="captures" style="margin-top:8px">
+          <div class="cap-row"><span class="lbl">Blancs</span><span data-cap="w"></span><span class="score" data-score="w"></span></div>
+          <div class="cap-row"><span class="lbl">Noirs</span><span data-cap="b"></span><span class="score" data-score="b"></span></div>
+        </div>
+      </div>
+    </div>
+    <div class="side">
+      <div class="card">
+        <h2 id="onlineTitle">Partie</h2>
+        <div class="toolbar">
+          <button id="btnResign" class="danger">⚐ Abandonner</button>
+          <button id="btnDraw">½ Proposer nulle</button>
+        </div>
+        <div class="toolbar" style="margin-top:8px">
+          <button id="btnOnlinePgn">⤓ Export PGN</button>
+          <button id="btnOnlineLeave">← Quitter la vue</button>
+        </div>
+      </div>
+      <div class="scoresheet">
+        <h2>Feuille de partie</h2>
+        <div class="movelist" id="onlineMoves"></div>
+      </div>
+      <div class="card chatbox" style="min-height:240px">
+        <h2>💬 Commentaires en direct</h2>
+        <div class="chatlog" id="gameChatLog" data-empty="Joueurs et spectateurs peuvent commenter ici."></div>
+        <div class="chatinput">
+          <input type="text" id="gameChatInput" maxlength="240" placeholder="Commenter la partie…">
+          <button class="primary" id="gameChatSend">➤</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ================= SALON ================= -->
+<div class="view" id="view-salon">
+  <div class="card chatbox" style="max-width:760px; margin:0 auto; min-height:480px">
+    <h2>☕ Salon du Cercle — discussion générale <span class="small" id="salonOnline"></span></h2>
+    <div class="chatlog" id="salonLog" style="max-height:430px" data-empty="Le salon est calme… Lance la conversation !"></div>
+    <div class="chatinput">
+      <input type="text" id="salonInput" maxlength="300" placeholder="Écrire au salon…">
+      <button class="primary" id="salonSend">➤</button>
+    </div>
+  </div>
+</div>
+
+<!-- ================= MESSAGES PRIVÉS ================= -->
+<div class="view" id="view-dm">
+  <div class="card">
+    <h2>✉️ Messagerie privée <span class="small">(non chiffrée)</span></h2>
+    <div class="dm-layout">
+      <div>
+        <div style="display:flex; gap:8px; margin-bottom:10px">
+          <input type="text" id="dmNewPeer" placeholder="Pseudo…" maxlength="16" style="flex:1">
+          <button id="dmNewBtn">＋</button>
+        </div>
+        <div class="threads list" id="dmThreads" data-empty="Aucune conversation."></div>
+      </div>
+      <div class="chatbox" style="border-left:1px solid var(--panel-edge); padding-left:16px">
+        <h2 id="dmTitle">Sélectionne une conversation</h2>
+        <div class="chatlog" id="dmLog" style="max-height:380px" data-empty=""></div>
+        <div class="chatinput">
+          <input type="text" id="dmInput" maxlength="300" placeholder="Message privé…" disabled>
+          <button class="primary" id="dmSend" disabled>➤</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ================= ADMINISTRATION ================= -->
+<div class="view" id="view-admin">
+  <div class="stack">
+    <div class="card" id="adminDenied">
+      <h2>⚙ Administration</h2>
+      <p class="small">Accès réservé aux administrateurs. Connecte-toi avec un compte disposant du rôle
+        <strong>admin</strong> — le premier compte créé sur la plateforme reçoit ce rôle automatiquement.</p>
+    </div>
+
+    <div class="card" id="admClaimBox" style="display:none">
+      <h2>⚙ Initialisation</h2>
+      <p class="small" style="margin-bottom:10px">Aucun administrateur n'existe encore dans la base.
+        En tant qu'utilisateur connecté, tu peux revendiquer ce rôle pour initialiser la plateforme.</p>
+      <button class="primary" id="adminClaim">Devenir administrateur</button>
+    </div>
+
+    <div id="adminPanels" style="display:none" class="stack">
+      <div class="card">
+        <h2>Tableau de bord</h2>
+        <div class="stat-grid" id="admStats"></div>
+      </div>
+
+      <div class="card">
+        <h2>Utilisateurs — base JSON <code>db:users</code></h2>
+        <div style="overflow-x:auto">
+          <table class="admin-table">
+            <thead><tr><th>Pseudo</th><th>E-mail</th><th>Fournisseur</th><th>V/D/N</th><th>Créé le</th><th>Actions</th></tr></thead>
+            <tbody id="admUsers"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="grid2">
+        <div class="card">
+          <h2>Parties</h2>
+          <div class="list" id="admGames" data-empty="Aucune partie." style="max-height:280px"></div>
+        </div>
+        <div class="card">
+          <h2>Modération du salon
+            <button id="admClearSalon" class="danger" style="float:right; padding:4px 10px; font-size:12px">Vider le salon</button>
+          </h2>
+          <div class="list" id="admSalon" data-empty="Aucun message." style="max-height:280px"></div>
+        </div>
+      </div>
+
+      <div class="grid2">
+        <div class="card">
+          <h2>Journal d'administration</h2>
+          <div class="list" id="admLog" data-empty="Aucune action enregistrée." style="max-height:220px"></div>
+        </div>
+        <div class="card">
+          <h2>Maintenance</h2>
+          <div class="toolbar">
+            <button id="admExportAll">⤓ Sauvegarde complète (JSON)</button>
+            <button id="admPurge">🧹 Purger les parties terminées</button>
+          </div>
+          <div class="dangerzone">
+            <p class="small" style="margin-bottom:8px">Zone dangereuse — actions irréversibles.</p>
+            <button class="danger" id="admReset" style="width:100%">☠ Réinitialiser toute la plateforme</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ================= MODALES ================= -->
+<div class="overlay" id="promoOverlay">
+  <div class="modal">
+    <h3>Promotion du pion</h3>
+    <div class="promo-choices" id="promoChoices"></div>
+  </div>
+</div>
+
+<div class="overlay" id="endOverlay">
+  <div class="modal">
+    <h3 id="endTitle"></h3>
+    <p id="endText"></p>
+    <button class="primary" id="endClose">Fermer</button>
+  </div>
+</div>
+
+<div class="overlay" id="authOverlay">
+  <div class="modal" style="width:430px; text-align:left">
+    <button class="modal-close" id="authClose" aria-label="Fermer">✕</button>
+    <h3 style="text-align:center">Bienvenue au Cercle</h3>
+
+    <div id="authSso">
+      <button class="sso-btn google" id="ssoGoogle"><span class="ico">G</span> Continuer avec Google (Gmail)</button>
+      <button class="sso-btn facebook" id="ssoFacebook"><span class="ico">f</span> Continuer avec Facebook</button>
+      <p class="small" style="margin:4px 0 0">Mode démo : l'OAuth réel exige un backend et une app enregistrée chez le fournisseur.</p>
+      <div class="divider"><span>ou par e-mail</span></div>
+    </div>
+
+    <!-- Étape de consentement SSO simulée -->
+    <div id="ssoStep" style="display:none">
+      <p id="ssoTitle" class="small"></p>
+      <div class="fields">
+        <div><label class="opt">Adresse e-mail</label><input type="text" id="ssoEmail" maxlength="60" placeholder="prenom.nom@gmail.com"></div>
+        <div><label class="opt">Nom affiché (pseudo)</label><input type="text" id="ssoName" maxlength="16" placeholder="ex. CavalierNoir"></div>
+      </div>
+      <p class="small" id="ssoMsg" style="color:var(--check); min-height:16px; margin-bottom:8px"></p>
+      <button class="primary" id="ssoOk" style="width:100%">Autoriser (démo)</button>
+      <button id="ssoBack" style="width:100%; margin-top:8px">← Retour</button>
+    </div>
+
+    <div id="authForm">
+      <div class="auth-tabs">
+        <button id="tabLogin" class="active">Connexion</button>
+        <button id="tabRegister">Créer un compte</button>
+      </div>
+      <div class="fields">
+        <div id="fEmail" style="display:none"><label class="opt">Adresse e-mail</label><input type="text" id="authEmail" maxlength="60" placeholder="toi@exemple.com"></div>
+        <div><label class="opt" id="authPseudoLabel">Pseudo ou e-mail</label><input type="text" id="authPseudo" maxlength="60" placeholder="ex. CavalierNoir"></div>
+        <div><label class="opt">Mot de passe</label><input type="password" id="authPass" maxlength="64" placeholder="6 caractères minimum"></div>
+      </div>
+      <p class="small warn">⚠️ Prototype : n'utilise jamais un vrai mot de passe ici — la base JSON vit dans un stockage partagé lisible par les utilisateurs de l'application.</p>
+      <p class="small" id="authMsg" style="color:var(--check); min-height:16px; margin-bottom:8px"></p>
+      <button class="primary" id="authSubmit" style="width:100%">Se connecter</button>
+      <button id="authGuest" style="width:100%; margin-top:8px">Continuer en invité</button>
+    </div>
+  </div>
+</div>
+
+<div class="overlay" id="confirmOverlay">
+  <div class="modal">
+    <h3 id="confirmTitle"></h3>
+    <p id="confirmText"></p>
+    <div style="display:flex; gap:10px; justify-content:center">
+      <button id="confirmNo">Annuler</button>
+      <button class="primary" id="confirmYes">Confirmer</button>
+    </div>
+  </div>
+</div>
+
+<!-- ============================================================
+     MOTEUR D'ÉCHECS — code pur (sans DOM), réutilisé tel quel
+     dans un Web Worker pour l'IA.
+============================================================ -->
+<script id="engineCode">
+'use strict';
+const FILES = 'abcdefgh';
+const VALUE = { P:1, N:3, B:3, R:5, Q:9, K:0 };
+const VALUE_AI = { P:100, N:320, B:330, R:500, Q:900, K:20000 };
+const PST = {
+  P: [[0,0,0,0,0,0,0,0],[50,50,50,50,50,50,50,50],[10,10,20,30,30,20,10,10],[5,5,10,25,25,10,5,5],[0,0,0,20,20,0,0,0],[5,-5,-10,0,0,-10,-5,5],[5,10,10,-20,-20,10,10,5],[0,0,0,0,0,0,0,0]],
+  N: [[-50,-40,-30,-30,-30,-30,-40,-50],[-40,-20,0,0,0,0,-20,-40],[-30,0,10,15,15,10,0,-30],[-30,5,15,20,20,15,5,-30],[-30,0,15,20,20,15,0,-30],[-30,5,10,15,15,10,5,-30],[-40,-20,0,5,5,0,-20,-40],[-50,-40,-30,-30,-30,-30,-40,-50]],
+  B: [[-20,-10,-10,-10,-10,-10,-10,-20],[-10,0,0,0,0,0,0,-10],[-10,0,5,10,10,5,0,-10],[-10,5,5,10,10,5,5,-10],[-10,0,10,10,10,10,0,-10],[-10,10,10,10,10,10,10,-10],[-10,5,0,0,0,0,5,-10],[-20,-10,-10,-10,-10,-10,-10,-20]],
+  R: [[0,0,0,0,0,0,0,0],[5,10,10,10,10,10,10,5],[-5,0,0,0,0,0,0,-5],[-5,0,0,0,0,0,0,-5],[-5,0,0,0,0,0,0,-5],[-5,0,0,0,0,0,0,-5],[-5,0,0,0,0,0,0,-5],[0,0,0,5,5,0,0,0]],
+  Q: [[-20,-10,-10,-5,-5,-10,-10,-20],[-10,0,0,0,0,0,0,-10],[-10,0,5,5,5,5,0,-10],[-5,0,5,5,5,5,0,-5],[0,0,5,5,5,5,0,-5],[-10,5,5,5,5,5,0,-10],[-10,0,5,0,0,0,0,-10],[-20,-10,-10,-5,-5,-10,-10,-20]],
+  K: [[-30,-40,-40,-50,-50,-40,-40,-30],[-30,-40,-40,-50,-50,-40,-40,-30],[-30,-40,-40,-50,-50,-40,-40,-30],[-30,-40,-40,-50,-50,-40,-40,-30],[-20,-30,-30,-40,-40,-30,-30,-20],[-10,-20,-20,-20,-20,-20,-20,-10],[20,20,0,0,0,0,20,20],[20,30,10,0,0,10,30,20]]
+};
+
+function initialPosition() {
+  const b = Array.from({length:8}, () => Array(8).fill(null));
+  const back = ['R','N','B','Q','K','B','N','R'];
+  for (let c = 0; c < 8; c++) {
+    b[0][c] = { t: back[c], col: 'b' };
+    b[1][c] = { t: 'P', col: 'b' };
+    b[6][c] = { t: 'P', col: 'w' };
+    b[7][c] = { t: back[c], col: 'w' };
+  }
+  return { board: b, turn: 'w', castling: { wK:true, wQ:true, bK:true, bQ:true }, ep: null, halfmove: 0 };
+}
+function cloneState(s) { return JSON.parse(JSON.stringify(s)); }
+function inside(r, c) { return r >= 0 && r < 8 && c >= 0 && c < 8; }
+function opp(col) { return col === 'w' ? 'b' : 'w'; }
+
+function pseudoMoves(s, r, c) {
+  const p = s.board[r][c];
+  if (!p) return [];
+  const out = [];
+  const add = (tr, tc, fl) => { const m = { fr:r, fc:c, tr, tc }; if (fl) Object.assign(m, fl); out.push(m); };
+  const slide = dirs => {
+    for (let i = 0; i < dirs.length; i++) {
+      const dr = dirs[i][0], dc = dirs[i][1];
+      let nr = r + dr, nc = c + dc;
+      while (inside(nr, nc)) {
+        const q = s.board[nr][nc];
+        if (!q) add(nr, nc);
+        else { if (q.col !== p.col) add(nr, nc); break; }
+        nr += dr; nc += dc;
+      }
+    }
+  };
+  if (p.t === 'P') {
+    const dir = p.col === 'w' ? -1 : 1;
+    const start = p.col === 'w' ? 6 : 1;
+    const promoRow = p.col === 'w' ? 0 : 7;
+    if (inside(r + dir, c) && !s.board[r + dir][c]) {
+      add(r + dir, c, { promo: r + dir === promoRow });
+      if (r === start && !s.board[r + 2*dir][c]) add(r + 2*dir, c, { double:true });
+    }
+    const dcs = [-1, 1];
+    for (let i = 0; i < 2; i++) {
+      const nr = r + dir, nc = c + dcs[i];
+      if (!inside(nr, nc)) continue;
+      const q = s.board[nr][nc];
+      if (q && q.col !== p.col) add(nr, nc, { promo: nr === promoRow });
+      else if (s.ep && s.ep.r === nr && s.ep.c === nc) add(nr, nc, { ep:true });
+    }
+  } else if (p.t === 'N') {
+    const js = [[-2,-1],[-2,1],[-1,-2],[-1,2],[1,-2],[1,2],[2,-1],[2,1]];
+    for (let i = 0; i < js.length; i++) {
+      const nr = r + js[i][0], nc = c + js[i][1];
+      if (inside(nr, nc) && (!s.board[nr][nc] || s.board[nr][nc].col !== p.col)) add(nr, nc);
+    }
+  } else if (p.t === 'B') slide([[-1,-1],[-1,1],[1,-1],[1,1]]);
+  else if (p.t === 'R') slide([[-1,0],[1,0],[0,-1],[0,1]]);
+  else if (p.t === 'Q') slide([[-1,-1],[-1,1],[1,-1],[1,1],[-1,0],[1,0],[0,-1],[0,1]]);
+  else if (p.t === 'K') {
+    for (let dr = -1; dr <= 1; dr++) for (let dc = -1; dc <= 1; dc++) {
+      if (!dr && !dc) continue;
+      const nr = r + dr, nc = c + dc;
+      if (inside(nr, nc) && (!s.board[nr][nc] || s.board[nr][nc].col !== p.col)) add(nr, nc);
+    }
+    const row = p.col === 'w' ? 7 : 0;
+    if (r === row && c === 4 && !isAttacked(s, row, 4, opp(p.col))) {
+      if (s.castling[p.col + 'K'] && !s.board[row][5] && !s.board[row][6] &&
+          !isAttacked(s, row, 5, opp(p.col)) && !isAttacked(s, row, 6, opp(p.col)) &&
+          s.board[row][7] && s.board[row][7].t === 'R' && s.board[row][7].col === p.col)
+        add(row, 6, { castle:'K' });
+      if (s.castling[p.col + 'Q'] && !s.board[row][3] && !s.board[row][2] && !s.board[row][1] &&
+          !isAttacked(s, row, 3, opp(p.col)) && !isAttacked(s, row, 2, opp(p.col)) &&
+          s.board[row][0] && s.board[row][0].t === 'R' && s.board[row][0].col === p.col)
+        add(row, 2, { castle:'Q' });
+    }
+  }
+  return out;
+}
+
+function isAttacked(s, r, c, byCol) {
+  const dir = byCol === 'w' ? 1 : -1;
+  const dcs = [-1, 1];
+  for (let i = 0; i < 2; i++) {
+    const nr = r + dir, nc = c + dcs[i];
+    if (inside(nr, nc)) {
+      const q = s.board[nr][nc];
+      if (q && q.col === byCol && q.t === 'P') return true;
+    }
+  }
+  const js = [[-2,-1],[-2,1],[-1,-2],[-1,2],[1,-2],[1,2],[2,-1],[2,1]];
+  for (let i = 0; i < js.length; i++) {
+    const nr = r + js[i][0], nc = c + js[i][1];
+    if (inside(nr, nc)) {
+      const q = s.board[nr][nc];
+      if (q && q.col === byCol && q.t === 'N') return true;
+    }
+  }
+  const rays = [
+    { dirs: [[-1,0],[1,0],[0,-1],[0,1]], types: ['R','Q'] },
+    { dirs: [[-1,-1],[-1,1],[1,-1],[1,1]], types: ['B','Q'] }
+  ];
+  for (let g = 0; g < 2; g++) {
+    const dirs = rays[g].dirs, types = rays[g].types;
+    for (let i = 0; i < 4; i++) {
+      let nr = r + dirs[i][0], nc = c + dirs[i][1], dist = 1;
+      while (inside(nr, nc)) {
+        const q = s.board[nr][nc];
+        if (q) {
+          if (q.col === byCol && (types.indexOf(q.t) >= 0 || (q.t === 'K' && dist === 1))) return true;
+          break;
+        }
+        nr += dirs[i][0]; nc += dirs[i][1]; dist++;
+      }
+    }
+  }
+  return false;
+}
+
+function findKing(s, col) {
+  for (let r = 0; r < 8; r++) for (let c = 0; c < 8; c++) {
+    const p = s.board[r][c];
+    if (p && p.t === 'K' && p.col === col) return { r, c };
+  }
+  return null;
+}
+function inCheck(s, col) {
+  const k = findKing(s, col);
+  return k ? isAttacked(s, k.r, k.c, opp(col)) : false;
+}
+
+/* Applique un coup ; renvoie la pièce capturée éventuelle. */
+function applyMove(s, m, promoPiece) {
+  const p = s.board[m.fr][m.fc];
+  let capture = s.board[m.tr][m.tc];
+  if (m.ep) { capture = s.board[m.fr][m.tc]; s.board[m.fr][m.tc] = null; }
+  s.board[m.tr][m.tc] = p;
+  s.board[m.fr][m.fc] = null;
+  if (m.castle) {
+    const row = m.fr;
+    if (m.castle === 'K') { s.board[row][5] = s.board[row][7]; s.board[row][7] = null; }
+    else { s.board[row][3] = s.board[row][0]; s.board[row][0] = null; }
+  }
+  if (m.promo) p.t = promoPiece || 'Q';
+  if (p.t === 'K' || m.castle) { s.castling[p.col + 'K'] = false; s.castling[p.col + 'Q'] = false; }
+  if (m.fr === 7 && m.fc === 0) s.castling.wQ = false;
+  if (m.fr === 7 && m.fc === 7) s.castling.wK = false;
+  if (m.fr === 0 && m.fc === 0) s.castling.bQ = false;
+  if (m.fr === 0 && m.fc === 7) s.castling.bK = false;
+  if (m.tr === 7 && m.tc === 0) s.castling.wQ = false;
+  if (m.tr === 7 && m.tc === 7) s.castling.wK = false;
+  if (m.tr === 0 && m.tc === 0) s.castling.bQ = false;
+  if (m.tr === 0 && m.tc === 7) s.castling.bK = false;
+  s.ep = m.double ? { r: (m.fr + m.tr) / 2, c: m.fc } : null;
+  s.halfmove = (p.t === 'P' || m.promo || capture) ? 0 : s.halfmove + 1;
+  s.turn = opp(s.turn);
+  return capture;
+}
+
+function legalMoves(s, r, c) {
+  const p = s.board[r][c];
+  if (!p || p.col !== s.turn) return [];
+  return pseudoMoves(s, r, c).filter(function(m) {
+    const t = cloneState(s);
+    applyMove(t, m);
+    return !inCheck(t, p.col);
+  });
+}
+function allLegalMoves(s, col) {
+  const out = [];
+  for (let r = 0; r < 8; r++) for (let c = 0; c < 8; c++) {
+    const p = s.board[r][c];
+    if (p && p.col === col) {
+      const pm = pseudoMoves(s, r, c);
+      for (let i = 0; i < pm.length; i++) {
+        const t = cloneState(s);
+        applyMove(t, pm[i]);
+        if (!inCheck(t, col)) out.push(pm[i]);
+      }
+    }
+  }
+  return out;
+}
+
+function positionKey(s) {
+  let k = s.turn;
+  for (let r = 0; r < 8; r++) for (let c = 0; c < 8; c++) {
+    const p = s.board[r][c];
+    k += p ? p.col + p.t : '.';
+  }
+  k += (s.castling.wK?'K':'') + (s.castling.wQ?'Q':'') + (s.castling.bK?'k':'') + (s.castling.bQ?'q':'');
+  k += s.ep ? FILES[s.ep.c] + s.ep.r : '-';
+  return k;
+}
+
+function insufficientMaterial(s) {
+  let minors = 0;
+  for (let r = 0; r < 8; r++) for (let c = 0; c < 8; c++) {
+    const p = s.board[r][c];
+    if (!p || p.t === 'K') continue;
+    if (p.t === 'B' || p.t === 'N') minors++;
+    else return false;
+  }
+  return minors <= 1;
+}
+
+/* SAN (lettres anglaises — standard PGN) */
+function toSAN(s, m, promoPiece) {
+  const p = s.board[m.fr][m.fc];
+  if (m.castle) return m.castle === 'K' ? 'O-O' : 'O-O-O';
+  const dest = FILES[m.tc] + (8 - m.tr);
+  const isCapture = !!s.board[m.tr][m.tc] || m.ep;
+  let txt;
+  if (p.t === 'P') {
+    txt = (isCapture ? FILES[m.fc] + 'x' : '') + dest;
+    if (m.promo) txt += '=' + (promoPiece || 'Q');
+  } else {
+    let amb = '';
+    for (let r = 0; r < 8; r++) for (let c = 0; c < 8; c++) {
+      if (r === m.fr && c === m.fc) continue;
+      const q = s.board[r][c];
+      if (q && q.col === p.col && q.t === p.t) {
+        const lm = legalMoves(s, r, c);
+        for (let i = 0; i < lm.length; i++) {
+          if (lm[i].tr === m.tr && lm[i].tc === m.tc) {
+            amb = (c !== m.fc) ? FILES[m.fc] : String(8 - m.fr);
+          }
+        }
+      }
+    }
+    txt = p.t + amb + (isCapture ? 'x' : '') + dest;
+  }
+  return txt;
+}
+
+/* ---------- IA : minimax alpha-bêta ---------- */
+function evaluate(s) {
+  let score = 0;
+  for (let r = 0; r < 8; r++) for (let c = 0; c < 8; c++) {
+    const p = s.board[r][c];
+    if (!p) continue;
+    const pst = p.col === 'w' ? PST[p.t][r][c] : PST[p.t][7 - r][c];
+    const v = VALUE_AI[p.t] + pst;
+    score += p.col === 'w' ? v : -v;
+  }
+  return score;
+}
+function orderMoves(s, moves) {
+  moves.sort(function(a, b) {
+    const va = s.board[a.tr][a.tc] ? VALUE_AI[s.board[a.tr][a.tc].t] : 0;
+    const vb = s.board[b.tr][b.tc] ? VALUE_AI[s.board[b.tr][b.tc].t] : 0;
+    return vb - va;
+  });
+  return moves;
+}
+function minimax(s, depth, alpha, beta, maximizing) {
+  if (depth === 0) return evaluate(s);
+  const col = maximizing ? 'w' : 'b';
+  const moves = orderMoves(s, allLegalMoves(s, col));
+  if (moves.length === 0) {
+    if (inCheck(s, col)) return maximizing ? -99999 - depth : 99999 + depth;
+    return 0;
+  }
+  if (maximizing) {
+    let best = -Infinity;
+    for (let i = 0; i < moves.length; i++) {
+      const t = cloneState(s);
+      applyMove(t, moves[i]);
+      const v = minimax(t, depth - 1, alpha, beta, false);
+      if (v > best) best = v;
+      if (best > alpha) alpha = best;
+      if (beta <= alpha) break;
+    }
+    return best;
+  } else {
+    let best = Infinity;
+    for (let i = 0; i < moves.length; i++) {
+      const t = cloneState(s);
+      applyMove(t, moves[i]);
+      const v = minimax(t, depth - 1, alpha, beta, true);
+      if (v < best) best = v;
+      if (best < beta) beta = best;
+      if (beta <= alpha) break;
+    }
+    return best;
+  }
+}
+function aiBestMove(s, depth, fuzz) {
+  const col = s.turn;
+  const moves = orderMoves(s, allLegalMoves(s, col));
+  if (moves.length === 0) return null;
+  let best = null, bestScore = -Infinity;
+  for (let i = 0; i < moves.length; i++) {
+    const t = cloneState(s);
+    applyMove(t, moves[i]);
+    let sc = minimax(t, depth - 1, -Infinity, Infinity, t.turn === 'w');
+    if (col === 'b') sc = -sc;
+    sc += (fuzz || 0) * Math.random();
+    if (sc > bestScore) { bestScore = sc; best = moves[i]; }
+  }
+  return best;
+}
+</script>
+
+<!-- ============================================================
+     APPLICATION
+============================================================ -->
+<script>
+'use strict';
+
+/* ===================== Utilitaires ===================== */
+const $ = id => document.getElementById(id);
+const GLYPH = { w: { K:'♔', Q:'♕', R:'♖', B:'♗', N:'♘', P:'♙' }, b: { K:'♚', Q:'♛', R:'♜', B:'♝', N:'♟'.replace('♟','♞'), P:'♟' } };
+GLYPH.b.N = '♞';
+const EN2FR = { K:'R', Q:'D', R:'T', B:'F', N:'C' };
+const sanFr = san => san.replace(/[KQRBN]/g, ch => EN2FR[ch]);
+const esc = t => { const d = document.createElement('div'); d.textContent = t == null ? '' : String(t); return d.innerHTML; };
+const fmtTime = ts => new Date(ts).toLocaleTimeString('fr-FR', { hour:'2-digit', minute:'2-digit' });
+const fmtClock = sec => {
+  if (sec == null) return '—';
+  sec = Math.max(0, Math.ceil(sec));
+  const m = Math.floor(sec / 60), s = sec % 60;
+  return m + ':' + String(s).padStart(2, '0');
+};
+function tinySound() {
+  try {
+    const ctx = tinySound.ctx || (tinySound.ctx = new (window.AudioContext || window.webkitAudioContext)());
+    const o = ctx.createOscillator(), g = ctx.createGain();
+    o.frequency.value = 520; o.type = 'sine';
+    g.gain.setValueAtTime(0.06, ctx.currentTime);
+    g.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + 0.12);
+    o.connect(g); g.connect(ctx.destination);
+    o.start(); o.stop(ctx.currentTime + 0.13);
+  } catch (e) { /* silencieux */ }
+}
+
+/* ===================== Stockage partagé ===================== */
+const HAS_STORAGE = typeof window.storage !== 'undefined' && window.storage && typeof window.storage.get === 'function';
+async function sget(key, shared = true) {
+  if (!HAS_STORAGE) return null;
+  try { const r = await window.storage.get(key, shared); return r && r.value != null ? JSON.parse(r.value) : null; }
+  catch (e) { return null; }
+}
+async function sset(key, val, shared = true) {
+  if (!HAS_STORAGE) return false;
+  try { const r = await window.storage.set(key, JSON.stringify(val), shared); return !!r; }
+  catch (e) { console.error('storage.set', key, e); return false; }
+}
+async function slist(prefix, shared = true) {
+  if (!HAS_STORAGE) return [];
+  try { const r = await window.storage.list(prefix, shared); return (r && r.keys) || []; }
+  catch (e) { return []; }
+}
+
+/* ===================== Couche "Partie" (G) ===================== */
+function newG(tc) { // tc: {base (s), inc (s)} ou null
+  const state = initialPosition();
+  return {
+    state,
+    moves: [],                    // SAN anglais
+    captured: { w: [], b: [] },
+    posKeys: [positionKey(state)],
+    lastMove: null,
+    over: null,                   // { title, detail, result, reason }
+    clocks: tc ? { w: tc.base, b: tc.base, inc: tc.inc, lastTs: null, started: false } : null
+  };
+}
+
+function finishG(G, result, title, detail, reason) {
+  G.over = { result, title, detail, reason };
+}
+
+/* Joue un coup validé ; gère pendule, notation, fins de partie. */
+function doMove(G, move, promoPiece) {
+  const mover = G.state.turn;
+  const san = toSAN(G.state, move, promoPiece);
+  const captured = applyMove(G.state, move, promoPiece);
+  if (captured) G.captured[mover].push(captured);
+  G.lastMove = move;
+
+  // Pendule
+  if (G.clocks) {
+    const now = Date.now();
+    if (G.clocks.started && G.clocks.lastTs) {
+      G.clocks[mover] = Math.max(0, G.clocks[mover] - (now - G.clocks.lastTs) / 1000) + (G.clocks.inc || 0);
+    }
+    G.clocks.lastTs = now;
+    G.clocks.started = true;
+  }
+
+  // Répétitions
+  const key = positionKey(G.state);
+  G.posKeys.push(key);
+  let reps = 0;
+  for (const k of G.posKeys) if (k === key) reps++;
+
+  // Suffixe & fins
+  let suffix = '';
+  const next = G.state.turn;
+  const replies = allLegalMoves(G.state, next);
+  const chk = inCheck(G.state, next);
+  const moveNum = Math.ceil((G.moves.length + 1) / 2);
+  if (replies.length === 0) {
+    if (chk) {
+      suffix = '#';
+      const winner = next === 'w' ? 'Les Noirs' : 'Les Blancs';
+      finishG(G, next === 'w' ? '0-1' : '1-0', 'Échec et mat',
+        winner + ' remportent la partie en ' + moveNum + ' coups.', 'mat');
+    } else {
+      finishG(G, '1/2-1/2', 'Pat', 'Aucun coup légal : la partie est nulle.', 'pat');
+    }
+  } else if (chk) suffix = '+';
+  G.moves.push(san + suffix);
+
+  if (!G.over) {
+    if (G.state.halfmove >= 100)
+      finishG(G, '1/2-1/2', 'Partie nulle', 'Règle des 50 coups : 50 coups sans prise ni mouvement de pion.', '50coups');
+    else if (reps >= 3)
+      finishG(G, '1/2-1/2', 'Partie nulle', 'Triple répétition de la même position.', 'repetition');
+    else if (insufficientMaterial(G.state))
+      finishG(G, '1/2-1/2', 'Partie nulle', 'Matériel insuffisant pour mater.', 'materiel');
+  }
+  tinySound();
+}
+
+/* Temps restant affichable (décompte en direct côté client) */
+function liveClock(G, col) {
+  if (!G.clocks) return null;
+  let t = G.clocks[col];
+  if (G.clocks.started && !G.over && G.state.turn === col && G.clocks.lastTs)
+    t -= (Date.now() - G.clocks.lastTs) / 1000;
+  return Math.max(0, t);
+}
+
+/* Export PGN */
+function exportPGN(G, white, black, eventName) {
+  const d = new Date();
+  const pad = n => String(n).padStart(2, '0');
+  const date = d.getFullYear() + '.' + pad(d.getMonth()+1) + '.' + pad(d.getDate());
+  const result = G.over ? G.over.result : '*';
+  let pgn = '[Event "' + eventName + '"]\n[Site "Le Cercle"]\n[Date "' + date + '"]\n[White "' + white + '"]\n[Black "' + black + '"]\n[Result "' + result + '"]\n\n';
+  let line = '';
+  for (let i = 0; i < G.moves.length; i += 2) {
+    line += (i/2 + 1) + '. ' + G.moves[i] + (G.moves[i+1] ? ' ' + G.moves[i+1] : '') + ' ';
+    if (line.length > 70) { pgn += line.trim() + '\n'; line = ''; }
+  }
+  pgn += line + result + '\n';
+  const blob = new Blob([pgn], { type: 'application/x-chess-pgn' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'le-cercle-' + Date.now() + '.pgn';
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(a.href), 4000);
+}
+
+/* ===================== Modales communes ===================== */
+function askPromotion(color) {
+  return new Promise(resolve => {
+    const box = $('promoChoices');
+    box.innerHTML = '';
+    const NAMES = { Q:'Dame', R:'Tour', B:'Fou', N:'Cavalier' };
+    for (const t of ['Q','R','B','N']) {
+      const b = document.createElement('button');
+      b.textContent = GLYPH[color][t];
+      b.setAttribute('aria-label', NAMES[t]);
+      b.addEventListener('click', () => {
+        $('promoOverlay').classList.remove('show');
+        resolve(t);
+      });
+      box.appendChild(b);
+    }
+    $('promoOverlay').classList.add('show');
+  });
+}
+function showEnd(G) {
+  if (!G.over) return;
+  $('endTitle').textContent = G.over.title;
+  $('endText').textContent = G.over.detail + '  (' + G.over.result + ')';
+  setTimeout(() => $('endOverlay').classList.add('show'), 400);
+}
+$('endClose').addEventListener('click', () => $('endOverlay').classList.remove('show'));
+
+let confirmResolve = null;
+function askConfirm(title, text) {
+  return new Promise(resolve => {
+    confirmResolve = resolve;
+    $('confirmTitle').textContent = title;
+    $('confirmText').textContent = text;
+    $('confirmOverlay').classList.add('show');
+  });
+}
+$('confirmYes').addEventListener('click', () => { $('confirmOverlay').classList.remove('show'); if (confirmResolve) { confirmResolve(true); confirmResolve = null; } });
+$('confirmNo').addEventListener('click', () => { $('confirmOverlay').classList.remove('show'); if (confirmResolve) { confirmResolve(false); confirmResolve = null; } });
+
+/* ===================== Rendu d'échiquier générique ===================== */
+function BoardUI(boardEl, opts) {
+  // opts: { getG, canPlay(color)->bool, onMove(move, promoPiece), flipped() }
+  const frame = boardEl.closest('.board-frame');
+  const ranksEl = frame.querySelector('.ranks');
+  const filesEl = frame.querySelector('.files');
+  let selected = null, legal = [];
+
+  function coords() {
+    ranksEl.innerHTML = ''; filesEl.innerHTML = '';
+    for (let i = 0; i < 8; i++) {
+      const r = document.createElement('span');
+      r.textContent = opts.flipped() ? i + 1 : 8 - i;
+      ranksEl.appendChild(r);
+      const f = document.createElement('span');
+      f.textContent = FILES[opts.flipped() ? 7 - i : i];
+      filesEl.appendChild(f);
+    }
+  }
+
+  async function onSquare(r, c) {
+    const G = opts.getG();
+    if (!G || G.over) return;
+    const s = G.state;
+    if (!opts.canPlay(s.turn)) return;
+    const mv = legal.find(m => m.tr === r && m.tc === c);
+    if (mv) {
+      selected = null; legal = [];
+      let promo = 'Q';
+      if (mv.promo) promo = await askPromotion(s.turn);
+      opts.onMove(mv, promo);
+      return;
+    }
+    const p = s.board[r][c];
+    if (p && p.col === s.turn) { selected = { r, c }; legal = legalMoves(s, r, c); }
+    else { selected = null; legal = []; }
+    render();
+  }
+
+  function render() {
+    const G = opts.getG();
+    coords();
+    boardEl.innerHTML = '';
+    if (!G) return;
+    const s = G.state;
+    const checkedKing = inCheck(s, s.turn) ? findKing(s, s.turn) : null;
+    for (let i = 0; i < 64; i++) {
+      const vr = Math.floor(i / 8), vc = i % 8;
+      const r = opts.flipped() ? 7 - vr : vr;
+      const c = opts.flipped() ? 7 - vc : vc;
+      const sq = document.createElement('div');
+      sq.className = 'sq ' + ((r + c) % 2 === 0 ? 'light' : 'dark');
+      sq.tabIndex = 0;
+      sq.setAttribute('role', 'gridcell');
+      const p = s.board[r][c];
+      if (p) {
+        sq.textContent = GLYPH[p.col][p.t];
+        sq.classList.add(p.col === 'w' ? 'piece-w' : 'piece-b');
+      }
+      if (G.lastMove && ((G.lastMove.fr === r && G.lastMove.fc === c) || (G.lastMove.tr === r && G.lastMove.tc === c)))
+        sq.classList.add('lastmove');
+      if (selected && selected.r === r && selected.c === c) sq.classList.add('selected');
+      if (checkedKing && checkedKing.r === r && checkedKing.c === c) sq.classList.add('in-check');
+      const hint = legal.find(m => m.tr === r && m.tc === c);
+      if (hint) sq.classList.add(s.board[r][c] || hint.ep ? 'capture-hint' : 'move-hint');
+      const act = () => onSquare(r, c);
+      sq.addEventListener('click', act);
+      sq.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); act(); } });
+      boardEl.appendChild(sq);
+    }
+  }
+
+  return { render, clearSel: () => { selected = null; legal = []; } };
+}
+
+function renderSidePanel(rootEl, G) {
+  const fmt = arr => arr.map(p => GLYPH[p.col][p.t]).join('');
+  rootEl.querySelector('[data-cap="w"]').textContent = fmt(G.captured.w);
+  rootEl.querySelector('[data-cap="b"]').textContent = fmt(G.captured.b);
+  const sum = arr => arr.reduce((a, p) => a + VALUE[p.t], 0);
+  const dw = sum(G.captured.w) - sum(G.captured.b);
+  rootEl.querySelector('[data-score="w"]').textContent = dw > 0 ? '+' + dw : '';
+  rootEl.querySelector('[data-score="b"]').textContent = dw < 0 ? '+' + (-dw) : '';
+}
+
+function renderMoves(el, G) {
+  el.innerHTML = '';
+  for (let i = 0; i < G.moves.length; i += 2) {
+    const num = document.createElement('span');
+    num.className = 'num';
+    num.textContent = (i/2 + 1) + '.';
+    el.appendChild(num);
+    for (let j = 0; j < 2; j++) {
+      const ply = document.createElement('span');
+      ply.className = 'ply';
+      if (i + j === G.moves.length - 1) ply.classList.add('latest');
+      ply.textContent = G.moves[i+j] ? sanFr(G.moves[i+j]) : '';
+      el.appendChild(ply);
+    }
+  }
+  el.scrollTop = el.scrollHeight;
+}
+
+function renderClocks(el, G, names) {
+  el.innerHTML = '';
+  for (const col of ['b','w']) {
+    const d = document.createElement('div');
+    d.className = 'clock';
+    const t = liveClock(G, col);
+    if (G.clocks && !G.over && G.state.turn === col && G.clocks.started) d.classList.add('running');
+    if (G.clocks && t !== null && t <= 0) d.classList.add('flag');
+    d.innerHTML = '<span class="who">' + esc(names[col]) + '</span>' + fmtClock(t);
+    el.appendChild(d);
+  }
+}
+
+/* ===================== Navigation ===================== */
+let currentView = 'home';
+document.querySelectorAll('nav button').forEach(b => {
+  b.addEventListener('click', () => switchView(b.dataset.view));
+});
+function switchView(v) {
+  currentView = v;
+  document.querySelectorAll('nav button').forEach(x => x.classList.toggle('active', x.dataset.view === v));
+  document.querySelectorAll('.view').forEach(x => x.classList.remove('active'));
+  $('view-' + v).classList.add('active');
+  if (v === 'home') refreshLobby();
+  if (v === 'salon') { updateSalonBadge(0); refreshSalon(); }
+  if (v === 'dm') refreshThreads();
+  if (v === 'admin') refreshAdmin();
+}
+
+/* ============================================================
+   JEU LOCAL & IA
+============================================================ */
+let LG = null;           // partie locale
+let localFlipped = false;
+let aiWorker = null, aiBusy = false;
+let localHistory = [];
+
+function setupWorker() {
+  try {
+    const code = document.getElementById('engineCode').textContent +
+      '\nonmessage = function(e){ var d = e.data; var m = aiBestMove(d.state, d.depth, d.fuzz); postMessage({ move: m, token: d.token }); };';
+    aiWorker = new Worker(URL.createObjectURL(new Blob([code], { type: 'application/javascript' })));
+  } catch (e) { aiWorker = null; }
+}
+setupWorker();
+let aiToken = 0;
+function aiCompute(state, depth, fuzz) {
+  return new Promise(resolve => {
+    if (aiWorker) {
+      const token = ++aiToken;
+      const handler = e => {
+        if (!e.data || e.data.token !== token) return;
+        aiWorker.removeEventListener('message', handler);
+        resolve(e.data.move);
+      };
+      aiWorker.addEventListener('message', handler);
+      aiWorker.postMessage({ state: cloneState(state), depth, fuzz, token });
+    } else {
+      setTimeout(() => resolve(aiBestMove(cloneState(state), depth, fuzz)), 30);
+    }
+  });
+}
+
+const localBoard = BoardUI($('localBoard'), {
+  getG: () => LG,
+  flipped: () => localFlipped,
+  canPlay: color => {
+    if (aiBusy) return false;
+    const mode = $('localMode').value;
+    return mode === 'human' || color === 'w';
+  },
+  onMove: (mv, promo) => {
+    localHistory.push(JSON.parse(JSON.stringify(LG)));
+    doMove(LG, mv, promo);
+    renderLocal();
+    if (LG.over) { showEnd(LG); return; }
+    maybeLocalAI();
+  }
+});
+
+async function maybeLocalAI() {
+  const mode = $('localMode').value;
+  if (!mode.startsWith('ai') || !LG || LG.over || LG.state.turn !== 'b') return;
+  aiBusy = true;
+  renderLocal();
+  const depth = parseInt(mode.split('-')[1], 10);
+  const fuzz = depth === 2 ? 60 : depth === 3 ? 12 : 0;
+  const mv = await aiCompute(LG.state, depth, fuzz);
+  aiBusy = false;
+  if (mv && LG && !LG.over && LG.state.turn === 'b') {
+    doMove(LG, mv, 'Q');
+    renderLocal();
+    if (LG.over) showEnd(LG);
+  } else renderLocal();
+}
+
+function renderLocal() {
+  if (!LG) return;
+  localBoard.render();
+  renderSidePanel($('view-local'), LG);
+  renderMoves($('localMoves'), LG);
+  renderClocks($('localClocks'), LG, { w: 'Blancs', b: 'Noirs' });
+  const st = $('localStatus');
+  if (LG.over) st.innerHTML = '<strong>' + esc(LG.over.title) + '.</strong> ' + esc(LG.over.detail);
+  else {
+    const colDot = LG.state.turn === 'w' ? '#faf6ec' : '#1c1611';
+    const name = LG.state.turn === 'w' ? 'Trait aux Blancs' : 'Trait aux Noirs';
+    const chk = inCheck(LG.state, LG.state.turn) ? ' — <strong style="color:var(--check)">Échec !</strong>' : '';
+    const think = aiBusy ? ' <em class="small">(l\u2019ordinateur réfléchit…)</em>' : '';
+    st.innerHTML = '<span class="turn-dot" style="background:' + colDot + '"></span>' + name + chk + think;
+  }
+  $('btnLocalUndo').disabled = localHistory.length === 0 || aiBusy;
+}
+
+function localNew() {
+  const tcv = $('localTc').value;
+  const tc = tcv === 'inf' ? null : { base: +tcv.split('|')[0], inc: +tcv.split('|')[1] };
+  LG = newG(tc);
+  localHistory = [];
+  aiBusy = false;
+  $('endOverlay').classList.remove('show');
+  localBoard.clearSel();
+  renderLocal();
+}
+$('btnLocalNew').addEventListener('click', localNew);
+$('btnLocalFlip').addEventListener('click', () => { localFlipped = !localFlipped; renderLocal(); });
+$('btnLocalUndo').addEventListener('click', () => {
+  if (!localHistory.length || aiBusy) return;
+  const vsAi = $('localMode').value.startsWith('ai');
+  LG = localHistory.pop();
+  if (vsAi && LG.state.turn === 'b' && localHistory.length) LG = localHistory.pop();
+  $('endOverlay').classList.remove('show');
+  localBoard.clearSel();
+  renderLocal();
+});
+$('btnLocalPgn').addEventListener('click', () => {
+  if (!LG || !LG.moves.length) return;
+  const mode = $('localMode').value;
+  exportPGN(LG, 'Joueur Blancs', mode.startsWith('ai') ? 'Ordinateur' : 'Joueur Noirs', 'Partie locale');
+});
+$('localMode').addEventListener('change', maybeLocalAI);
+
+/* Pendule locale : tic + chute du drapeau */
+setInterval(() => {
+  if (currentView === 'local' && LG && LG.clocks && LG.clocks.started && !LG.over) {
+    renderClocks($('localClocks'), LG, { w: 'Blancs', b: 'Noirs' });
+    const turn = LG.state.turn;
+    if (liveClock(LG, turn) <= 0) {
+      const winner = turn === 'w' ? 'Les Noirs' : 'Les Blancs';
+      finishG(LG, turn === 'w' ? '0-1' : '1-0', 'Temps écoulé', winner + ' gagnent au temps.', 'temps');
+      renderLocal(); showEnd(LG);
+    }
+  }
+}, 250);
+
+localNew();
+
+/* ============================================================
+   COUCHE EN LIGNE — profil, présence, lobby
+============================================================ */
+let pseudo = null;
+let bannedCache = [];   // liste des pseudos suspendus, rafraîchie par heartbeat
+
+if (!HAS_STORAGE) $('offlineBanner').classList.add('show');
+
+/* ============================================================
+   AUTHENTIFICATION & BASE DE DONNÉES JSON
+   Base : clé partagée 'db:users' (tableau JSON)
+   Schéma utilisateur :
+   { id, pseudo, email, provider: 'local'|'google'|'facebook',
+     passHash, salt (comptes locaux), createdAt,
+     stats: { w: victoires, l: défaites, d: nulles } }
+   ⚠️ Prototype pédagogique : le stockage est partagé et lisible.
+   En production : backend (PHP/Node), bcrypt/argon2 côté serveur,
+   et OAuth réel (Google Identity Services, Facebook Login).
+============================================================ */
+let currentUser = null;     // enregistrement du compte connecté (null = invité)
+let authMode = 'login';     // 'login' | 'register'
+let ssoProvider = null;
+
+const DB_USERS = 'db:users';
+const uid = () => 'u' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+const validEmail = e => /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(e);
+const cleanPseudo = v => v.trim().replace(/[^a-zA-Z0-9_\-]/g, '').slice(0, 16);
+const newSalt = () => Math.random().toString(36).slice(2) + Date.now().toString(36);
+
+async function dbUsers() { return (await sget(DB_USERS)) || []; }
+async function dbSaveUsers(list) { await sset(DB_USERS, list.slice(0, 300)); }
+
+async function hashPass(salt, pass) {
+  const txt = salt + '::' + pass;
+  if (window.crypto && crypto.subtle) {
+    try {
+      const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(txt));
+      return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2, '0')).join('');
+    } catch (e) { /* repli ci-dessous */ }
+  }
+  let h = 5381;
+  for (let i = 0; i < txt.length; i++) h = ((h << 5) + h + txt.charCodeAt(i)) >>> 0;
+  return 'djb2_' + h.toString(16);
+}
+
+function refreshProfileUI() {
+  if (pseudo && currentUser) {
+    const s = currentUser.stats || { w:0, l:0, d:0 };
+    const prov = currentUser.provider === 'google' ? ' · via Google' :
+                 currentUser.provider === 'facebook' ? ' · via Facebook' : '';
+    const role = currentUser.role === 'admin' ? ' <span class="role-badge">ADMIN</span>' : '';
+    $('profileLine').innerHTML = 'Connecté : <strong class="pseudo-tag">' + esc(pseudo) + '</strong>' + role + ' ' +
+      '<span class="small">(' + esc(currentUser.email || '—') + prov + ') · ' +
+      s.w + ' V / ' + s.l + ' D / ' + s.d + ' N</span>';
+    $('btnAuth').style.display = 'none';
+    $('btnLogout').style.display = '';
+    $('btnExportDb').style.display = '';
+  } else if (pseudo) {
+    $('profileLine').innerHTML = 'Invité : <strong class="pseudo-tag">' + esc(pseudo) + '</strong> ' +
+      '<span class="small">(crée un compte pour conserver tes statistiques)</span>';
+    $('btnAuth').style.display = '';
+    $('btnAuth').textContent = 'Créer un compte / Connexion';
+    $('btnLogout').style.display = '';
+    $('btnExportDb').style.display = 'none';
+  } else {
+    $('profileLine').textContent = 'Connecte-toi pour accéder aux fonctions en ligne.';
+    $('btnAuth').style.display = '';
+    $('btnAuth').textContent = 'Connexion / Créer un compte';
+    $('btnLogout').style.display = 'none';
+    $('btnExportDb').style.display = 'none';
+  }
+  $('navAdmin').style.display = (currentUser && currentUser.role === 'admin') ? '' : 'none';
+}
+
+function requirePseudo() {
+  if (!HAS_STORAGE) { alert('Stockage partagé indisponible dans cet environnement.'); return false; }
+  if (!pseudo) { openAuth(); return false; }
+  if (bannedCache.indexOf(pseudo) >= 0) { alert('Ton compte est suspendu par l\u2019administration.'); return false; }
+  return true;
+}
+
+function openAuth() {
+  $('ssoStep').style.display = 'none';
+  $('authForm').style.display = '';
+  $('authSso').style.display = '';
+  setAuthMode('login');
+  $('authOverlay').classList.add('show');
+  setTimeout(() => $('authPseudo').focus(), 60);
+}
+function setAuthMode(m) {
+  authMode = m;
+  $('tabLogin').classList.toggle('active', m === 'login');
+  $('tabRegister').classList.toggle('active', m === 'register');
+  $('fEmail').style.display = m === 'register' ? '' : 'none';
+  $('authPseudoLabel').textContent = m === 'register' ? 'Pseudo (2–16 car. : lettres, chiffres, - _)' : 'Pseudo ou e-mail';
+  $('authSubmit').textContent = m === 'register' ? 'Créer mon compte' : 'Se connecter';
+  $('authMsg').textContent = '';
+}
+$('tabLogin').addEventListener('click', () => setAuthMode('login'));
+$('tabRegister').addEventListener('click', () => setAuthMode('register'));
+$('btnAuth').addEventListener('click', () => { if (HAS_STORAGE) openAuth(); });
+$('authClose').addEventListener('click', () => $('authOverlay').classList.remove('show'));
+
+async function finishLogin(user) {
+  currentUser = user;
+  pseudo = user.pseudo;
+  await sset('session', { userId: user.id, pseudo: user.pseudo, ts: Date.now() }, false);
+  $('authOverlay').classList.remove('show');
+  $('authPass').value = '';
+  refreshProfileUI();
+  heartbeat();
+  refreshThreads();
+  refreshLobby();
+}
+
+async function authSubmitAction() {
+  const msg = $('authMsg');
+  msg.textContent = '';
+  const pass = $('authPass').value;
+  if (authMode === 'register') {
+    const email = $('authEmail').value.trim().toLowerCase();
+    const ps = cleanPseudo($('authPseudo').value);
+    if (!validEmail(email)) { msg.textContent = 'Adresse e-mail invalide.'; return; }
+    if (ps.length < 2) { msg.textContent = 'Pseudo : 2 à 16 caractères (lettres, chiffres, - _).'; return; }
+    if (pass.length < 6) { msg.textContent = 'Mot de passe : 6 caractères minimum.'; return; }
+    const users = await dbUsers();
+    if (users.some(u => u.pseudo.toLowerCase() === ps.toLowerCase())) { msg.textContent = 'Ce pseudo est déjà pris.'; return; }
+    if (users.some(u => u.email === email)) { msg.textContent = 'Un compte existe déjà avec cet e-mail.'; return; }
+    const salt = newSalt();
+    const user = {
+      id: uid(), pseudo: ps, email, provider: 'local',
+      role: users.length === 0 ? 'admin' : 'user',
+      salt, passHash: await hashPass(salt, pass),
+      createdAt: Date.now(), stats: { w:0, l:0, d:0 }
+    };
+    users.push(user);
+    await dbSaveUsers(users);
+    await finishLogin(user);
+  } else {
+    const idf = $('authPseudo').value.trim();
+    if (!idf || !pass) { msg.textContent = 'Renseigne ton identifiant et ton mot de passe.'; return; }
+    const users = await dbUsers();
+    const user = users.find(u => u.pseudo.toLowerCase() === idf.toLowerCase() ||
+                                 (u.email && u.email === idf.toLowerCase()));
+    if (!user) { msg.textContent = 'Compte introuvable.'; return; }
+    if (user.banned) { msg.textContent = 'Compte suspendu par l\u2019administration.'; return; }
+    if (user.provider !== 'local') { msg.textContent = 'Ce compte utilise la connexion ' + user.provider + ' (bouton ci-dessus).'; return; }
+    const h = await hashPass(user.salt, pass);
+    if (h !== user.passHash) { msg.textContent = 'Mot de passe incorrect.'; return; }
+    await finishLogin(user);
+  }
+}
+$('authSubmit').addEventListener('click', authSubmitAction);
+$('authPass').addEventListener('keydown', e => { if (e.key === 'Enter') authSubmitAction(); });
+
+/* -------- SSO simulé (Google / Facebook) -------- */
+function openSso(provider) {
+  ssoProvider = provider;
+  $('authForm').style.display = 'none';
+  $('authSso').style.display = 'none';
+  $('ssoStep').style.display = '';
+  $('ssoMsg').textContent = '';
+  const site = provider === 'google' ? 'accounts.google.com' : 'facebook.com';
+  const nom = provider === 'google' ? 'Google' : 'Facebook';
+  $('ssoTitle').innerHTML = '🔐 <strong>Simulation</strong> de l\u2019écran de consentement ' + nom +
+    ' — en production, cette étape se déroule sur <em>' + site + '</em> et renvoie un jeton vérifié par le serveur.';
+  setTimeout(() => $('ssoEmail').focus(), 60);
+}
+$('ssoGoogle').addEventListener('click', () => openSso('google'));
+$('ssoFacebook').addEventListener('click', () => openSso('facebook'));
+$('ssoBack').addEventListener('click', () => {
+  $('ssoStep').style.display = 'none';
+  $('authForm').style.display = '';
+  $('authSso').style.display = '';
+});
+async function ssoOkAction() {
+  const msg = $('ssoMsg');
+  msg.textContent = '';
+  const email = $('ssoEmail').value.trim().toLowerCase();
+  if (!validEmail(email)) { msg.textContent = 'Adresse e-mail invalide.'; return; }
+  const users = await dbUsers();
+  let user = users.find(u => u.email === email && u.provider === ssoProvider);
+  if (!user) {
+    const name = cleanPseudo($('ssoName').value) || cleanPseudo(email.split('@')[0]);
+    if (name.length < 2) { msg.textContent = 'Choisis un nom affiché (2 caractères minimum).'; return; }
+    if (users.some(u => u.pseudo.toLowerCase() === name.toLowerCase())) { msg.textContent = 'Ce pseudo est déjà pris — choisis-en un autre.'; return; }
+    if (users.some(u => u.email === email)) { msg.textContent = 'Cet e-mail est déjà associé à un compte ' + (users.find(u => u.email === email).provider) + '.'; return; }
+    user = { id: uid(), pseudo: name, email, provider: ssoProvider, role: users.length === 0 ? 'admin' : 'user', createdAt: Date.now(), stats: { w:0, l:0, d:0 } };
+    users.push(user);
+    await dbSaveUsers(users);
+  }
+  if (user.banned) { msg.textContent = 'Compte suspendu par l\u2019administration.'; return; }
+  await finishLogin(user);
+}
+$('ssoOk').addEventListener('click', ssoOkAction);
+$('ssoName').addEventListener('keydown', e => { if (e.key === 'Enter') ssoOkAction(); });
+
+/* -------- Invité -------- */
+$('authGuest').addEventListener('click', async () => {
+  const ps = cleanPseudo($('authPseudo').value) || ('Invite_' + Math.random().toString(36).slice(2, 6));
+  pseudo = ps;
+  currentUser = null;
+  await sset('session', { guest: true, pseudo: ps, ts: Date.now() }, false);
+  $('authOverlay').classList.remove('show');
+  refreshProfileUI();
+  heartbeat();
+  refreshThreads();
+});
+
+/* -------- Déconnexion -------- */
+$('btnLogout').addEventListener('click', async () => {
+  pseudo = null;
+  currentUser = null;
+  await sset('session', { ts: Date.now() }, false);
+  refreshProfileUI();
+  refreshLobby();
+});
+
+/* -------- Session (reconnexion automatique) -------- */
+async function loadSession() {
+  const sess = await sget('session', false);
+  if (sess && sess.pseudo) {
+    if (sess.guest) { pseudo = sess.pseudo; refreshProfileUI(); return; }
+    const users = await dbUsers();
+    const u = users.find(x => x.id === sess.userId);
+    if (u) { currentUser = u; pseudo = u.pseudo; refreshProfileUI(); return; }
+  }
+  // Rétro-compatibilité : ancien profil simple → invité
+  const old = await sget('profile', false);
+  if (old && old.pseudo) pseudo = old.pseudo;
+  refreshProfileUI();
+}
+
+/* -------- Statistiques V/D/N enregistrées dans la base -------- */
+async function recordResultOnce(R) {
+  if (!currentUser || !R || R.status !== 'finished' || !R.result) return;
+  const amWhite = R.white === pseudo, amBlack = R.black === pseudo;
+  if (!amWhite && !amBlack) return;
+  if (await sget('statrec:' + R.id, false)) return;   // déjà comptabilisé
+  await sset('statrec:' + R.id, { done: 1 }, false);
+  const users = await dbUsers();
+  const u = users.find(x => x.id === currentUser.id);
+  if (!u) return;
+  u.stats = u.stats || { w:0, l:0, d:0 };
+  if (R.result === '1/2-1/2') u.stats.d++;
+  else if ((R.result === '1-0' && amWhite) || (R.result === '0-1' && amBlack)) u.stats.w++;
+  else u.stats.l++;
+  await dbSaveUsers(users);
+  currentUser = u;
+  refreshProfileUI();
+}
+
+/* -------- Export de la base au format JSON -------- */
+$('btnExportDb').addEventListener('click', async () => {
+  const users = await dbUsers();
+  const safe = users.map(u => ({
+    id: u.id, pseudo: u.pseudo, email: u.email, provider: u.provider,
+    createdAt: u.createdAt, stats: u.stats
+  })); // hachages et sels exclus volontairement
+  const data = { base: 'le-cercle', version: 1, exportee_le: new Date().toISOString(), utilisateurs: safe };
+  const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'le-cercle-users.json';
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(a.href), 4000);
+});
+
+/* Présence : clé partagée unique, lecture-modification-écriture */
+async function heartbeat() {
+  if (!pseudo || !HAS_STORAGE) return;
+  bannedCache = (await sget('db:banned')) || [];
+  const pres = (await sget('presence')) || {};
+  pres[pseudo] = Date.now();
+  for (const k of Object.keys(pres)) if (Date.now() - pres[k] > 180000) delete pres[k];
+  await sset('presence', pres);
+}
+setInterval(heartbeat, 25000);
+
+async function onlinePlayers() {
+  const pres = (await sget('presence')) || {};
+  const now = Date.now();
+  return Object.keys(pres).filter(k => now - pres[k] < 70000).sort();
+}
+
+/* -------- Lobby : index des parties -------- */
+async function readIndex() { return (await sget('gamesindex')) || []; }
+async function writeIndex(list) {
+  const now = Date.now();
+  list = list.filter(g => !(g.status === 'finished' && now - g.ts > 7200000)).slice(-30);
+  await sset('gamesindex', list);
+}
+
+async function refreshLobby() {
+  if (!HAS_STORAGE) return;
+  // Joueurs
+  const players = await onlinePlayers();
+  const pl = $('playersList');
+  pl.innerHTML = '';
+  for (const p of players) {
+    const item = document.createElement('div');
+    item.className = 'item';
+    item.innerHTML = '<span><span class="dot"></span>' + esc(p) + (p === pseudo ? ' <span class="small">(moi)</span>' : '') + '</span>';
+    if (p !== pseudo && pseudo) {
+      const b = document.createElement('button');
+      b.textContent = '✉️';
+      b.title = 'Message privé';
+      b.addEventListener('click', () => { openThread(p); switchView('dm'); });
+      item.appendChild(b);
+    }
+    pl.appendChild(item);
+  }
+  // Parties
+  const idx = await readIndex();
+  const open = $('openGames'), live = $('liveGames');
+  open.innerHTML = ''; live.innerHTML = '';
+  const rev = idx.slice().reverse();
+  for (const g of rev) {
+    const tcTxt = g.tc ? (g.tc.base/60) + ' min' + (g.tc.inc ? ' + ' + g.tc.inc + ' s' : '') : 'sans pendule';
+    if (g.status === 'open') {
+      const item = document.createElement('div');
+      item.className = 'item';
+      const creator = g.white || g.black;
+      item.innerHTML = '<span>♟ <strong>' + esc(creator) + '</strong> <span class="small">— ' + tcTxt + '</span></span>';
+      const b = document.createElement('button');
+      if (creator === pseudo) {
+        b.textContent = 'Reprendre';
+        b.addEventListener('click', () => enterOnlineGame(g.id));
+      } else {
+        b.className = 'primary';
+        b.textContent = 'Rejoindre';
+        b.addEventListener('click', () => joinGame(g.id));
+      }
+      item.appendChild(b);
+      open.appendChild(item);
+    } else if (g.status === 'playing') {
+      const item = document.createElement('div');
+      item.className = 'item';
+      item.innerHTML = '<span>⚔ <strong>' + esc(g.white) + '</strong> vs <strong>' + esc(g.black) + '</strong> <span class="small">— ' + tcTxt + '</span></span>';
+      const b = document.createElement('button');
+      const mine = pseudo && (g.white === pseudo || g.black === pseudo);
+      b.textContent = mine ? 'Reprendre' : '👁 Regarder';
+      b.addEventListener('click', () => enterOnlineGame(g.id));
+      item.appendChild(b);
+      live.appendChild(item);
+    }
+  }
+}
+setInterval(() => { if (currentView === 'home' && !document.hidden) refreshLobby(); }, 5000);
+
+/* -------- Création / rejoindre -------- */
+$('btnCreateGame').addEventListener('click', async () => {
+  if (!requirePseudo()) return;
+  const tcv = $('newTc').value;
+  const tc = tcv === 'inf' ? null : { base: +tcv.split('|')[0], inc: +tcv.split('|')[1] };
+  let colorPick = $('newColor').value;
+  if (colorPick === 'random') colorPick = Math.random() < 0.5 ? 'w' : 'b';
+  const id = 'g' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+  const R = {
+    id, status: 'open', tc,
+    white: colorPick === 'w' ? pseudo : null,
+    black: colorPick === 'b' ? pseudo : null,
+    G: newG(tc),
+    drawOffer: null, result: null, reason: null,
+    ts: Date.now()
+  };
+  await sset('game:' + id, R);
+  const idx = await readIndex();
+  idx.push({ id, status: 'open', white: R.white, black: R.black, tc, ts: Date.now() });
+  await writeIndex(idx);
+  enterOnlineGame(id);
+});
+
+async function joinGame(id) {
+  if (!requirePseudo()) return;
+  const R = await sget('game:' + id);
+  if (!R || R.status !== 'open') { refreshLobby(); return; }
+  if (R.white === pseudo || R.black === pseudo) { enterOnlineGame(id); return; }
+  if (!R.white) R.white = pseudo; else R.black = pseudo;
+  R.status = 'playing';
+  if (R.G.clocks) { R.G.clocks.lastTs = Date.now(); R.G.clocks.started = true; }
+  R.ts = Date.now();
+  await sset('game:' + id, R);
+  const idx = await readIndex();
+  const e = idx.find(g => g.id === id);
+  if (e) { e.status = 'playing'; e.white = R.white; e.black = R.black; e.ts = Date.now(); }
+  await writeIndex(idx);
+  await appendGameChat(id, { sys: true, text: pseudo + ' a rejoint la partie. Que le meilleur gagne !' });
+  enterOnlineGame(id);
+}
+
+/* ============================================================
+   PARTIE EN LIGNE — vue, synchro, commentaires
+============================================================ */
+let OR = null;           // enregistrement distant courant
+let onlineId = null;
+let onlinePoll = null;
+let lastChatLen = -1;
+
+const onlineBoard = BoardUI($('onlineBoard'), {
+  getG: () => OR ? OR.G : null,
+  flipped: () => !!(OR && pseudo && OR.black === pseudo),
+  canPlay: color => {
+    if (!OR || OR.status !== 'playing') return false;
+    return (color === 'w' && OR.white === pseudo) || (color === 'b' && OR.black === pseudo);
+  },
+  onMove: async (mv, promo) => {
+    if (!OR) return;
+    doMove(OR.G, mv, promo);
+    if (OR.G.over) {
+      OR.status = 'finished';
+      OR.result = OR.G.over.result;
+      OR.reason = OR.G.over.reason;
+    }
+    OR.drawOffer = null;
+    OR.ts = Date.now();
+    renderOnline();
+    await sset('game:' + onlineId, OR);
+    if (OR.status === 'finished') {
+      await updateIndexStatus(onlineId, 'finished', OR.result);
+      showEnd(OR.G);
+    }
+  }
+});
+
+async function updateIndexStatus(id, status, result) {
+  const idx = await readIndex();
+  const e = idx.find(g => g.id === id);
+  if (e) { e.status = status; if (result) e.result = result; e.ts = Date.now(); }
+  await writeIndex(idx);
+}
+
+function enterOnlineGame(id) {
+  onlineId = id;
+  OR = null;
+  lastChatLen = -1;
+  $('gameChatLog').innerHTML = '';
+  switchView('online');
+  $('onlineEmpty').style.display = 'none';
+  $('onlineGameUI').style.display = '';
+  syncOnline(true);
+  if (onlinePoll) clearInterval(onlinePoll);
+  onlinePoll = setInterval(() => { if (!document.hidden) syncOnline(); }, 2500);
+}
+
+$('btnOnlineLeave').addEventListener('click', () => {
+  if (onlinePoll) clearInterval(onlinePoll);
+  onlinePoll = null; OR = null; onlineId = null;
+  $('onlineGameUI').style.display = 'none';
+  $('onlineEmpty').style.display = '';
+  switchView('home');
+});
+
+async function syncOnline(first) {
+  if (!onlineId) return;
+  const R = await sget('game:' + onlineId);
+  if (!R) return;
+  const localMoves = OR ? OR.G.moves.length : -1;
+  const meToMove = OR && OR.status === 'playing' &&
+    ((OR.G.state.turn === 'w' && OR.white === pseudo) || (OR.G.state.turn === 'b' && OR.black === pseudo));
+  // On adopte la version distante si elle a avancé, ou si ce n'est pas à nous de jouer
+  if (first || R.G.moves.length > localMoves || !meToMove || (OR && R.status !== OR.status)) {
+    const wasFinished = OR && OR.status === 'finished';
+    OR = R;
+    onlineBoard.clearSel();
+    renderOnline();
+    if (!first && R.G.moves.length > Math.max(localMoves, 0)) tinySound();
+    if (!first && R.status === 'finished' && !wasFinished) showEnd(R.G);
+  }
+  if (R.status === 'finished') recordResultOnce(R);
+  await syncGameChat();
+}
+
+function renderOnline() {
+  if (!OR) return;
+  onlineBoard.render();
+  renderSidePanel($('view-online'), OR.G);
+  renderMoves($('onlineMoves'), OR.G);
+  renderClocks($('onlineClocks'), OR.G, { w: OR.white || '— attente —', b: OR.black || '— attente —' });
+  const tcTxt = OR.tc ? (OR.tc.base/60) + ' min' + (OR.tc.inc ? ' + ' + OR.tc.inc + ' s' : '') : 'sans pendule';
+  $('onlineTitle').textContent = (OR.white || '?') + ' vs ' + (OR.black || '?') + ' — ' + tcTxt;
+  const st = $('onlineStatus');
+  const spectator = pseudo !== OR.white && pseudo !== OR.black;
+  if (OR.status === 'open') {
+    st.innerHTML = '⏳ En attente d\u2019un adversaire… <span class="small">Partage le défi via le salon !</span>';
+  } else if (OR.status === 'finished') {
+    st.innerHTML = '<strong>' + esc(OR.G.over ? OR.G.over.title : 'Partie terminée') + '.</strong> ' +
+      esc(OR.G.over ? OR.G.over.detail : '') + ' (' + (OR.result || '') + ')';
+  } else {
+    const colDot = OR.G.state.turn === 'w' ? '#faf6ec' : '#1c1611';
+    const name = OR.G.state.turn === 'w' ? esc(OR.white) : esc(OR.black);
+    const me = (OR.G.state.turn === 'w' && OR.white === pseudo) || (OR.G.state.turn === 'b' && OR.black === pseudo);
+    const chk = inCheck(OR.G.state, OR.G.state.turn) ? ' — <strong style="color:var(--check)">Échec !</strong>' : '';
+    st.innerHTML = '<span class="turn-dot" style="background:' + colDot + '"></span>Au trait : <strong>' + name + '</strong>' +
+      (me ? ' (à toi !)' : '') + chk + (spectator ? ' <span class="small">· mode spectateur</span>' : '');
+    if (OR.drawOffer && OR.drawOffer !== pseudo && !spectator) {
+      st.innerHTML += '<div style="margin-top:8px"><span class="small">' + esc(OR.drawOffer) +
+        ' propose la nulle :</span> <button id="acceptDraw" class="primary" style="padding:4px 10px; font-size:13px">Accepter ½-½</button></div>';
+      const b = $('acceptDraw');
+      if (b) b.addEventListener('click', acceptDraw);
+    } else if (OR.drawOffer === pseudo) {
+      st.innerHTML += '<div class="small" style="margin-top:6px">Proposition de nulle envoyée…</div>';
+    }
+  }
+  const isPlayer = pseudo && (OR.white === pseudo || OR.black === pseudo);
+  $('btnResign').disabled = !isPlayer || OR.status !== 'playing';
+  $('btnDraw').disabled = !isPlayer || OR.status !== 'playing' || OR.drawOffer === pseudo;
+}
+
+/* Pendule en ligne : tic + chute */
+setInterval(async () => {
+  if (currentView !== 'online' || !OR || OR.status !== 'playing' || !OR.G.clocks || !OR.G.clocks.started) return;
+  renderClocks($('onlineClocks'), OR.G, { w: OR.white, b: OR.black });
+  const turn = OR.G.state.turn;
+  if (liveClock(OR.G, turn) <= 0) {
+    const isPlayer = pseudo === OR.white || pseudo === OR.black;
+    if (!isPlayer) return; // un joueur écrit le résultat
+    const winner = turn === 'w' ? OR.black : OR.white;
+    finishG(OR.G, turn === 'w' ? '0-1' : '1-0', 'Temps écoulé', winner + ' gagne au temps.', 'temps');
+    OR.status = 'finished'; OR.result = OR.G.over.result; OR.reason = 'temps'; OR.ts = Date.now();
+    renderOnline();
+    await sset('game:' + onlineId, OR);
+    await updateIndexStatus(onlineId, 'finished', OR.result);
+    showEnd(OR.G);
+  }
+}, 300);
+
+$('btnResign').addEventListener('click', async () => {
+  if (!OR || OR.status !== 'playing') return;
+  const ok = await askConfirm('Abandonner ?', 'La partie sera comptée perdue.');
+  if (!ok) return;
+  const meWhite = OR.white === pseudo;
+  const winner = meWhite ? OR.black : OR.white;
+  finishG(OR.G, meWhite ? '0-1' : '1-0', 'Abandon', pseudo + ' abandonne. ' + winner + ' gagne.', 'abandon');
+  OR.status = 'finished'; OR.result = OR.G.over.result; OR.reason = 'abandon'; OR.ts = Date.now();
+  renderOnline();
+  await sset('game:' + onlineId, OR);
+  await updateIndexStatus(onlineId, 'finished', OR.result);
+  await appendGameChat(onlineId, { sys: true, text: pseudo + ' abandonne la partie.' });
+  showEnd(OR.G);
+});
+
+$('btnDraw').addEventListener('click', async () => {
+  if (!OR || OR.status !== 'playing') return;
+  OR.drawOffer = pseudo; OR.ts = Date.now();
+  renderOnline();
+  await sset('game:' + onlineId, OR);
+  await appendGameChat(onlineId, { sys: true, text: pseudo + ' propose la nulle.' });
+});
+async function acceptDraw() {
+  if (!OR) return;
+  finishG(OR.G, '1/2-1/2', 'Partie nulle', 'Nulle par accord mutuel.', 'accord');
+  OR.status = 'finished'; OR.result = '1/2-1/2'; OR.reason = 'accord'; OR.drawOffer = null; OR.ts = Date.now();
+  renderOnline();
+  await sset('game:' + onlineId, OR);
+  await updateIndexStatus(onlineId, 'finished', OR.result);
+  await appendGameChat(onlineId, { sys: true, text: 'Nulle acceptée. ½–½' });
+  showEnd(OR.G);
+}
+
+$('btnOnlinePgn').addEventListener('click', () => {
+  if (OR && OR.G.moves.length) exportPGN(OR.G, OR.white || '?', OR.black || '?', 'Partie en ligne — Le Cercle');
+});
+
+/* -------- Commentaires en direct sur la partie -------- */
+async function appendGameChat(id, msg) {
+  const log = (await sget('gamechat:' + id)) || [];
+  const entry = { text: msg.text, ts: Date.now() };
+  if (msg.sys) entry.sys = true; else entry.from = pseudo;
+  log.push(entry);
+  await sset('gamechat:' + id, log.slice(-80));
+}
+async function syncGameChat() {
+  if (!onlineId) return;
+  const log = (await sget('gamechat:' + onlineId)) || [];
+  if (log.length === lastChatLen) return;
+  lastChatLen = log.length;
+  renderChatLog($('gameChatLog'), log);
+}
+function renderChatLog(el, log) {
+  el.innerHTML = '';
+  for (const m of log) {
+    const d = document.createElement('div');
+    if (m.sys) {
+      d.className = 'msg sys';
+      d.textContent = '— ' + m.text;
+    } else {
+      d.className = 'msg';
+      d.innerHTML = '<span class="from' + (m.from === pseudo ? ' me' : '') + '">' + esc(m.from || '?') +
+        '</span><span class="time">' + fmtTime(m.ts) + '</span><br>' + esc(m.text);
+    }
+    el.appendChild(d);
+  }
+  el.scrollTop = el.scrollHeight;
+}
+$('gameChatSend').addEventListener('click', sendGameChat);
+$('gameChatInput').addEventListener('keydown', e => { if (e.key === 'Enter') sendGameChat(); });
+async function sendGameChat() {
+  if (!requirePseudo() || !onlineId) return;
+  const v = $('gameChatInput').value.trim();
+  if (!v) return;
+  $('gameChatInput').value = '';
+  await appendGameChat(onlineId, { text: v });
+  await syncGameChat();
+}
+
+/* ============================================================
+   SALON — discussion générale en temps réel
+============================================================ */
+let salonLen = 0;
+async function refreshSalon() {
+  if (!HAS_STORAGE) return;
+  const log = (await sget('chat:global')) || [];
+  if (log.length !== salonLen) {
+    if (currentView !== 'salon' && log.length > salonLen && salonLen > 0) updateSalonBadge(log.length - salonLen);
+    salonLen = log.length;
+    renderChatLog($('salonLog'), log);
+  }
+  const players = await onlinePlayers();
+  $('salonOnline').textContent = '· ' + players.length + ' en ligne';
+}
+function updateSalonBadge(n) {
+  const b = $('salonBadge');
+  if (n > 0 && currentView !== 'salon') { b.textContent = n > 9 ? '9+' : n; b.hidden = false; }
+  else b.hidden = true;
+}
+setInterval(() => { if (!document.hidden && (currentView === 'salon' || currentView === 'home')) refreshSalon(); }, 3000);
+
+$('salonSend').addEventListener('click', sendSalon);
+$('salonInput').addEventListener('keydown', e => { if (e.key === 'Enter') sendSalon(); });
+async function sendSalon() {
+  if (!requirePseudo()) return;
+  const v = $('salonInput').value.trim();
+  if (!v) return;
+  $('salonInput').value = '';
+  const log = (await sget('chat:global')) || [];
+  log.push({ from: pseudo, text: v, ts: Date.now() });
+  await sset('chat:global', log.slice(-80));
+  refreshSalon();
+}
+
+/* ============================================================
+   MESSAGERIE PRIVÉE
+============================================================ */
+let dmPeer = null;
+let dmLen = -1;
+const threadKey = (a, b) => 'dm:' + [a, b].sort().join('--');
+
+async function refreshThreads() {
+  if (!HAS_STORAGE || !pseudo) return;
+  const keys = await slist('dm:');
+  const mine = keys.filter(k => k.slice(3).split('--').indexOf(pseudo) >= 0).slice(0, 12);
+  const read = (await sget('dmread', false)) || {};
+  const box = $('dmThreads');
+  box.innerHTML = '';
+  let totalUnread = 0;
+  for (const k of mine) {
+    const parts = k.slice(3).split('--');
+    const peer = parts[0] === pseudo ? (parts[1] || '(moi)') : parts[0];
+    const log = (await sget(k)) || [];
+    const last = log[log.length - 1];
+    let unread = 0;
+    for (const m of log) if (m.ts > (read[k] || 0) && m.from !== pseudo) unread++;
+    totalUnread += unread;
+    const b = document.createElement('button');
+    b.className = 'th' + (peer === dmPeer ? ' active' : '');
+    b.innerHTML = '<span><strong>' + esc(peer) + '</strong><br><span class="small">' +
+      (last ? esc(String(last.text).slice(0, 28)) : '') + '</span></span>' +
+      (unread ? '<span class="badge">' + unread + '</span>' : '');
+    b.addEventListener('click', () => openThread(peer));
+    box.appendChild(b);
+  }
+  const badge = $('dmBadge');
+  if (totalUnread > 0 && currentView !== 'dm') { badge.textContent = totalUnread > 9 ? '9+' : totalUnread; badge.hidden = false; }
+  else badge.hidden = true;
+}
+setInterval(() => { if (!document.hidden && pseudo) refreshThreads(); }, 8000);
+
+async function openThread(peer) {
+  if (!requirePseudo()) return;
+  dmPeer = peer;
+  dmLen = -1;
+  $('dmTitle').textContent = 'Conversation avec ' + peer;
+  $('dmInput').disabled = false;
+  $('dmSend').disabled = false;
+  await refreshDm();
+  refreshThreads();
+}
+async function refreshDm() {
+  if (!dmPeer || !pseudo) return;
+  const k = threadKey(pseudo, dmPeer);
+  const log = (await sget(k)) || [];
+  if (log.length !== dmLen) {
+    dmLen = log.length;
+    renderChatLog($('dmLog'), log);
+    const read = (await sget('dmread', false)) || {};
+    read[k] = Date.now();
+    await sset('dmread', read, false);
+  }
+}
+setInterval(() => { if (!document.hidden && currentView === 'dm' && dmPeer) refreshDm(); }, 3000);
+
+$('dmNewBtn').addEventListener('click', () => {
+  const v = $('dmNewPeer').value.trim().replace(/[^a-zA-Z0-9_\-]/g, '');
+  if (v.length >= 2 && v !== pseudo) { $('dmNewPeer').value = ''; openThread(v); }
+});
+$('dmSend').addEventListener('click', sendDm);
+$('dmInput').addEventListener('keydown', e => { if (e.key === 'Enter') sendDm(); });
+async function sendDm() {
+  if (!requirePseudo() || !dmPeer) return;
+  const v = $('dmInput').value.trim();
+  if (!v) return;
+  $('dmInput').value = '';
+  const k = threadKey(pseudo, dmPeer);
+  const log = (await sget(k)) || [];
+  log.push({ from: pseudo, text: v, ts: Date.now() });
+  await sset(k, log.slice(-100));
+  await refreshDm();
+}
+
+/* ============================================================
+   ESPACE ADMINISTRATION
+   Rôle 'admin' : 1er compte créé, attribué par un autre admin,
+   ou revendiqué si aucun admin n'existe (migration).
+   ⚠️ Prototype : le stockage étant partagé et lisible, ce contrôle
+   d'accès est pédagogique — la vraie sécurité exige un backend.
+============================================================ */
+function isAdmin() { return !!(currentUser && currentUser.role === 'admin'); }
+
+async function sdel(key, shared = true) {
+  if (!HAS_STORAGE) return false;
+  try { await window.storage.delete(key, shared); return true; } catch (e) { return false; }
+}
+
+async function adminLog(action) {
+  const log = (await sget('db:adminlog')) || [];
+  log.push({ par: pseudo, action, ts: Date.now() });
+  await sset('db:adminlog', log.slice(-50));
+}
+
+function statCard(n, label) {
+  return '<div class="stat-card"><div class="n">' + n + '</div><div class="l">' + label + '</div></div>';
+}
+function adminBtn(label, fn, cls) {
+  const b = document.createElement('button');
+  b.textContent = label;
+  if (cls) b.className = cls;
+  b.addEventListener('click', fn);
+  return b;
+}
+
+async function refreshAdmin() {
+  if (!HAS_STORAGE) return;
+  const users = await dbUsers();
+  const hasAdmin = users.some(u => u.role === 'admin');
+  $('admClaimBox').style.display = (!hasAdmin && currentUser) ? '' : 'none';
+  $('adminPanels').style.display = isAdmin() ? '' : 'none';
+  $('adminDenied').style.display = (isAdmin() || (!hasAdmin && currentUser)) ? 'none' : '';
+  if (!isAdmin()) return;
+
+  const idx = await readIndex();
+  const salon = (await sget('chat:global')) || [];
+  const players = await onlinePlayers();
+  const banned = (await sget('db:banned')) || [];
+
+  const counts = { open:0, playing:0, finished:0 };
+  for (const g of idx) if (counts[g.status] !== undefined) counts[g.status]++;
+  $('admStats').innerHTML =
+    statCard(users.length, 'Comptes') +
+    statCard(players.length, 'En ligne') +
+    statCard(counts.open, 'Défis ouverts') +
+    statCard(counts.playing, 'En cours') +
+    statCard(counts.finished, 'Terminées') +
+    statCard(salon.length, 'Msgs salon');
+
+  renderAdminUsers(users, banned);
+  renderAdminGames(idx);
+  renderAdminSalon(salon);
+  renderAdminLog((await sget('db:adminlog')) || []);
+}
+
+/* -------- Utilisateurs -------- */
+function renderAdminUsers(users, banned) {
+  const tb = $('admUsers');
+  tb.innerHTML = '';
+  for (const u of users) {
+    const tr = document.createElement('tr');
+    const susp = u.banned || banned.indexOf(u.pseudo) >= 0;
+    tr.innerHTML = '<td><strong>' + esc(u.pseudo) + '</strong>' +
+      (u.role === 'admin' ? ' <span class="role-badge">ADMIN</span>' : '') +
+      (susp ? ' <span class="ban-badge">SUSPENDU</span>' : '') + '</td>' +
+      '<td class="small">' + esc(u.email || '—') + '</td>' +
+      '<td class="small">' + esc(u.provider || 'local') + '</td>' +
+      '<td class="small">' + (u.stats ? u.stats.w + '/' + u.stats.l + '/' + u.stats.d : '—') + '</td>' +
+      '<td class="small">' + new Date(u.createdAt).toLocaleDateString('fr-FR') + '</td>';
+    const td = document.createElement('td');
+    td.className = 'actions';
+    td.appendChild(adminBtn(susp ? 'Réactiver' : 'Suspendre', () => toggleBan(u), susp ? '' : 'danger'));
+    td.appendChild(adminBtn(u.role === 'admin' ? 'Rétrograder' : 'Promouvoir', () => toggleRole(u)));
+    td.appendChild(adminBtn('RAZ stats', () => adminResetStats(u)));
+    td.appendChild(adminBtn('Supprimer', () => adminDeleteUser(u), 'danger'));
+    tr.appendChild(td);
+    tb.appendChild(tr);
+  }
+}
+async function persistUsers(users, action) {
+  await dbSaveUsers(users);
+  const banned = users.filter(u => u.banned).map(u => u.pseudo);
+  await sset('db:banned', banned);
+  bannedCache = banned;
+  await adminLog(action);
+  const me = users.find(x => currentUser && x.id === currentUser.id);
+  if (me) currentUser = me;
+  refreshProfileUI();
+  refreshAdmin();
+}
+async function toggleBan(u) {
+  if (currentUser && u.id === currentUser.id) { alert('Impossible de se suspendre soi-même.'); return; }
+  const users = await dbUsers();
+  const t = users.find(x => x.id === u.id); if (!t) return;
+  t.banned = !t.banned;
+  await persistUsers(users, (t.banned ? 'Suspension de ' : 'Réactivation de ') + t.pseudo);
+}
+async function toggleRole(u) {
+  const users = await dbUsers();
+  const t = users.find(x => x.id === u.id); if (!t) return;
+  if (t.role === 'admin') {
+    const admins = users.filter(x => x.role === 'admin').length;
+    if (admins <= 1) { alert('Impossible de rétrograder le dernier administrateur.'); return; }
+    t.role = 'user';
+  } else t.role = 'admin';
+  await persistUsers(users, 'Rôle de ' + t.pseudo + ' \u2192 ' + t.role);
+}
+async function adminResetStats(u) {
+  const users = await dbUsers();
+  const t = users.find(x => x.id === u.id); if (!t) return;
+  t.stats = { w:0, l:0, d:0 };
+  await persistUsers(users, 'RAZ des statistiques de ' + t.pseudo);
+}
+async function adminDeleteUser(u) {
+  if (currentUser && u.id === currentUser.id) { alert('Impossible de supprimer son propre compte depuis l\u2019admin.'); return; }
+  const ok = await askConfirm('Supprimer ' + u.pseudo + ' ?', 'Le compte sera retiré définitivement de la base JSON.');
+  if (!ok) return;
+  let users = await dbUsers();
+  users = users.filter(x => x.id !== u.id);
+  await persistUsers(users, 'Suppression du compte ' + u.pseudo);
+}
+
+/* -------- Parties -------- */
+function renderAdminGames(idx) {
+  const box = $('admGames');
+  box.innerHTML = '';
+  const rev = idx.slice().reverse();
+  for (const g of rev) {
+    const item = document.createElement('div');
+    item.className = 'item';
+    const lbl = { open:'ouverte', playing:'en cours', finished:'terminée' }[g.status] || g.status;
+    item.innerHTML = '<span class="small"><strong>' + esc(g.white || '?') + '</strong> vs <strong>' + esc(g.black || '?') +
+      '</strong> — ' + lbl + (g.result ? ' · ' + g.result : '') + '</span>';
+    const acts = document.createElement('span');
+    acts.style.display = 'flex'; acts.style.gap = '5px';
+    acts.appendChild(adminBtn('Voir', () => enterOnlineGame(g.id)));
+    if (g.status !== 'finished') acts.appendChild(adminBtn('Clore', () => adminForceFinish(g)));
+    acts.appendChild(adminBtn('Suppr.', () => adminDeleteGame(g), 'danger'));
+    item.appendChild(acts);
+    box.appendChild(item);
+  }
+}
+async function adminForceFinish(g) {
+  const ok = await askConfirm('Clore la partie ?', 'Elle sera marquée terminée (décision administrative, nulle par défaut).');
+  if (!ok) return;
+  const R = await sget('game:' + g.id);
+  if (R) {
+    R.status = 'finished'; R.result = R.result || '1/2-1/2'; R.reason = 'admin'; R.ts = Date.now();
+    if (!R.G.over) finishG(R.G, R.result, 'Partie close', 'Clôturée par l\u2019administration.', 'admin');
+    await sset('game:' + g.id, R);
+  }
+  await updateIndexStatus(g.id, 'finished', (R && R.result) || '1/2-1/2');
+  await adminLog('Clôture administrative de la partie ' + g.id);
+  refreshAdmin();
+}
+async function adminDeleteGame(g) {
+  const ok = await askConfirm('Supprimer la partie ?', 'Ses données et commentaires seront effacés.');
+  if (!ok) return;
+  let idx = await readIndex();
+  idx = idx.filter(x => x.id !== g.id);
+  await writeIndex(idx);
+  await sdel('game:' + g.id);
+  await sdel('gamechat:' + g.id);
+  await adminLog('Suppression de la partie ' + g.id);
+  refreshAdmin();
+}
+
+/* -------- Modération du salon -------- */
+function renderAdminSalon(log) {
+  const box = $('admSalon');
+  box.innerHTML = '';
+  const recent = log.slice(-30);
+  for (const m of recent) {
+    const d = document.createElement('div');
+    d.className = 'item';
+    d.innerHTML = '<span class="small"><strong>' + esc(m.from || 'sys') + '</strong> · ' + fmtTime(m.ts) +
+      ' — ' + esc(String(m.text).slice(0, 60)) + '</span>';
+    d.appendChild(adminBtn('✕', () => adminDeleteSalonMsg(m), 'danger'));
+    box.appendChild(d);
+  }
+}
+async function adminDeleteSalonMsg(m) {
+  let log = (await sget('chat:global')) || [];
+  log = log.filter(x => !(x.ts === m.ts && x.from === m.from && x.text === m.text));
+  await sset('chat:global', log);
+  await adminLog('Suppression d\u2019un message du salon (' + (m.from || '?') + ')');
+  refreshAdmin();
+}
+$('admClearSalon').addEventListener('click', async () => {
+  if (!isAdmin()) return;
+  const ok = await askConfirm('Vider le salon ?', 'Tous les messages du salon seront supprimés.');
+  if (!ok) return;
+  await sset('chat:global', []);
+  await adminLog('Salon vidé');
+  refreshAdmin();
+});
+
+/* -------- Journal -------- */
+function renderAdminLog(log) {
+  const box = $('admLog');
+  box.innerHTML = '';
+  const rev = log.slice().reverse();
+  for (const e of rev) {
+    const d = document.createElement('div');
+    d.className = 'item';
+    d.innerHTML = '<span class="small"><strong>' + esc(e.par) + '</strong> · ' + fmtTime(e.ts) + ' — ' + esc(e.action) + '</span>';
+    box.appendChild(d);
+  }
+}
+
+/* -------- Revendication initiale du rôle admin -------- */
+$('adminClaim').addEventListener('click', async () => {
+  if (!currentUser) return;
+  const users = await dbUsers();
+  if (users.some(u => u.role === 'admin')) { refreshAdmin(); return; }
+  const me = users.find(x => x.id === currentUser.id);
+  if (!me) return;
+  me.role = 'admin';
+  await dbSaveUsers(users);
+  currentUser = me;
+  await adminLog(pseudo + ' devient administrateur (initialisation)');
+  refreshProfileUI();
+  refreshAdmin();
+});
+
+/* -------- Maintenance -------- */
+$('admExportAll').addEventListener('click', async () => {
+  if (!isAdmin()) return;
+  const data = {
+    base: 'le-cercle', type: 'sauvegarde-complete', version: 1,
+    exportee_le: new Date().toISOString(),
+    utilisateurs: await dbUsers(),
+    parties_index: await readIndex(),
+    salon: (await sget('chat:global')) || [],
+    suspendus: (await sget('db:banned')) || [],
+    journal_admin: (await sget('db:adminlog')) || []
+  };
+  const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'le-cercle-backup.json';
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(a.href), 4000);
+  await adminLog('Export de la sauvegarde complète');
+});
+$('admPurge').addEventListener('click', async () => {
+  if (!isAdmin()) return;
+  const ok = await askConfirm('Purger les parties terminées ?', 'Elles seront retirées de l\u2019index et leurs données supprimées.');
+  if (!ok) return;
+  let idx = await readIndex();
+  const done = idx.filter(g => g.status === 'finished');
+  idx = idx.filter(g => g.status !== 'finished');
+  await writeIndex(idx);
+  for (const g of done) { await sdel('game:' + g.id); await sdel('gamechat:' + g.id); }
+  await adminLog('Purge de ' + done.length + ' partie(s) terminée(s)');
+  refreshAdmin();
+});
+$('admReset').addEventListener('click', async () => {
+  if (!isAdmin()) return;
+  const ok1 = await askConfirm('Tout réinitialiser ?', 'Comptes, parties, salon et journaux seront effacés.');
+  if (!ok1) return;
+  const ok2 = await askConfirm('Vraiment sûr ?', 'Dernière confirmation : cette action est IRRÉVERSIBLE.');
+  if (!ok2) return;
+  const idx = await readIndex();
+  for (const g of idx) { await sdel('game:' + g.id); await sdel('gamechat:' + g.id); }
+  await sset('gamesindex', []);
+  await sset('chat:global', []);
+  await sset('db:banned', []);
+  await sset('db:adminlog', []);
+  await sset(DB_USERS, []);
+  bannedCache = [];
+  currentUser = null; pseudo = null;
+  await sset('session', { ts: Date.now() }, false);
+  refreshProfileUI();
+  refreshAdmin();
+  switchView('home');
+});
+
+/* ===================== Démarrage ===================== */
+(async function boot() {
+  await loadSession();
+  if (pseudo) { heartbeat(); refreshThreads(); }
+  refreshLobby();
+  refreshSalon();
+})();
+</script>
+</body>
+</html>

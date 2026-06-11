@@ -1,0 +1,11 @@
+# Configuration locale contenant les identifiants (jamais versionnée)
+api/config.php
+
+# Journaux
+*.log
+
+# Fichiers système / éditeurs
+Thumbs.db
+.DS_Store
+.vscode/
+.idea/
