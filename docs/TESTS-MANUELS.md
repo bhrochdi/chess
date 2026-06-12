@@ -1,0 +1,160 @@
+# Le Cercle — Plan de test manuel (backend PHP/MySQL)
+
+Vérifie que la plateforme fonctionne de façon autonome sur WampServer,
+sans l'API `window.storage` de l'artefact Claude.ai.
+
+## 0. Mise en place (une seule fois)
+
+1. **Base de données** — créer la base et la table :
+   ```
+   c:/wamp64/bin/mysql/mysql8.0.27/bin/mysql.exe -u root -p < sql/schema.sql
+   ```
+2. **Configuration** — copier l'exemple et renseigner les identifiants :
+   ```
+   copy api\config.example.php api\config.php
+   ```
+   puis éditer `api/config.php` (`db_pass`, etc.). Ce fichier est ignoré par git.
+3. **Servir l'application** — vérifier que WampServer (Apache) tourne, puis ouvrir :
+   ```
+   http://localhost/LeCercle/
+   ```
+   (adapter le chemin selon l'emplacement réel sous `c:/wamp64/www/`).
+
+**Critère transverse** : la bannière orange « stockage partagé indisponible »
+ne doit **jamais** apparaître. Si elle s'affiche, l'app est ouverte en `file://`
+ou Apache/MySQL ne répond pas → l'onglet réseau du navigateur doit montrer des
+appels `POST api/storage.php` en `200`.
+
+> Astuce diagnostic : ouvrir la console réseau (F12) et filtrer sur
+> `storage.php`. Toute réponse `≠ 200` (404 = mauvais chemin, 500 = config/DB)
+> pointe la cause.
+
+---
+
+## 1. Compte (authentification serveur via la base kv_store)
+
+1. Cliquer **Connexion / Créer un compte** → onglet **Créer un compte**.
+2. Créer le **premier** compte (ex. `Alice` / e-mail / mot de passe).
+   - ✅ Attendu : connexion immédiate, et **rôle ADMIN** affiché (1er compte).
+   - ✅ Le bouton **⚙ Admin** apparaît dans la navigation.
+3. Se déconnecter, recharger la page (F5).
+   - ✅ Attendu : reconnexion **automatique** n'a pas lieu après déconnexion,
+     mais après un simple rechargement *sans* déconnexion la session est
+     conservée (clé `session`, scope personnel).
+4. Créer un **second** compte `Bob` (autre navigateur ou fenêtre privée).
+   - ✅ Attendu : `Bob` est un utilisateur normal (pas admin).
+   - ✅ Tester l'unicité : recréer `Alice` → message « pseudo déjà pris ».
+5. Vérifier la persistance en base :
+   ```
+   SELECT cle FROM le_cercle.kv_store WHERE scope='' AND cle='db:users';
+   ```
+   - ✅ Attendu : une ligne `db:users` contenant les deux comptes.
+
+---
+
+## 2. Partie en ligne entre deux navigateurs
+
+Utiliser **deux navigateurs distincts** (ou un normal + un en navigation privée)
+pour avoir deux sessions PHP indépendantes. Navigateur 1 = `Alice`, navigateur 2 = `Bob`.
+
+1. **Alice** : Accueil → **Créer et attendre un adversaire** (cadence 5 min).
+   - ✅ La partie s'ouvre, statut « En attente d'un adversaire… ».
+2. **Bob** : Accueil → la partie d'Alice apparaît dans **Parties ouvertes** →
+   **Rejoindre**.
+   - ✅ Les deux écrans passent en « partie en cours » sous quelques secondes
+     (polling 2,5 s).
+3. Jouer **3-4 coups** en alternance.
+   - ✅ Chaque coup apparaît chez l'adversaire en ≤ 3 s, pendules décomptées.
+   - ✅ Les coups illégaux sont refusés ; le roque / la prise en passant
+     fonctionnent (non-régression moteur).
+4. **Alice** : **Proposer nulle** → **Bob** voit la proposition → **Accepter**.
+   - ✅ Les deux écrans affichent « Partie nulle » (½-½).
+   - *(Variante : tester **Abandonner** sur une autre partie.)*
+5. Après la fin, recharger l'Accueil des deux côtés.
+   - ✅ Statistiques V/D/N mises à jour pour les comptes (clé `db:users`).
+   - ✅ La partie bascule de « en cours » à « terminée ».
+6. **Spectateur** : un 3e visiteur (ou Alice depuis l'Accueil) clique
+   **👁 Regarder** sur une partie en cours.
+   - ✅ Le plateau se met à jour sans pouvoir jouer.
+
+---
+
+## 3. Salon (chat partagé global)
+
+1. **Alice** : onglet **Salon**, envoyer un message.
+2. **Bob** : onglet **Salon**.
+   - ✅ Le message d'Alice apparaît en ≤ 3 s.
+   - ✅ Le compteur « N en ligne » reflète les visiteurs actifs.
+3. **Bob** sur un autre onglet (Accueil) pendant qu'Alice écrit.
+   - ✅ Un **badge** rouge apparaît sur l'onglet Salon (messages non lus).
+4. Vérification base :
+   ```
+   SELECT JSON_LENGTH(valeur) FROM le_cercle.kv_store WHERE cle='chat:global' AND scope='';
+   ```
+   - ✅ Le nombre de messages augmente.
+
+---
+
+## 4. Messagerie privée
+
+1. **Alice** : onglet **Messages** → saisir `Bob` → **＋**, écrire un message.
+   - *(ou depuis l'Accueil : icône ✉️ en face de Bob dans « Joueurs en ligne ».)*
+2. **Bob** : onglet **Messages**.
+   - ✅ La conversation avec `Alice` apparaît, avec **badge** de non-lus.
+   - ✅ En ouvrant le fil, les messages s'affichent et le badge disparaît.
+3. **Bob** répond → **Alice** voit la réponse en ≤ 3 s.
+4. ✅ Isolation : un **3e compte** `Chloé` ne voit **pas** le fil Alice↔Bob
+   dans sa liste de conversations.
+5. Vérification base (la clé du fil est triée alphabétiquement) :
+   ```
+   SELECT cle FROM le_cercle.kv_store WHERE cle LIKE 'dm:%' AND scope='';
+   ```
+   - ✅ Attendu : `dm:Alice--Bob`.
+
+> Note : `dmread` (suivi des messages lus) est **personnel** → stocké sous
+> le scope de session, invisible des autres. Vérifier :
+> ```
+> SELECT COUNT(*) FROM le_cercle.kv_store WHERE cle='dmread' AND scope<>'';
+> ```
+
+---
+
+## 5. Administration (compte `Alice`, rôle admin)
+
+1. Onglet **⚙ Admin** → **Tableau de bord**.
+   - ✅ Les compteurs (comptes, en ligne, défis, parties, msgs salon) sont cohérents.
+2. **Utilisateurs** : sur `Bob`, tester **Suspendre** puis **Réactiver**.
+   - ✅ `Bob` suspendu ne peut plus se connecter (message « compte suspendu »).
+   - ✅ Le **journal d'administration** enregistre chaque action.
+3. **Promouvoir** `Bob` admin puis **Rétrograder**.
+   - ✅ Impossible de rétrograder le **dernier** admin (garde-fou).
+4. **Parties** : **Clore** une partie en cours, **Supprimer** une partie.
+   - ✅ La partie disparaît / passe en terminée ; `game:<id>` et `gamechat:<id>`
+     sont supprimés en base.
+5. **Modération salon** : supprimer un message, puis **Vider le salon**.
+6. **Maintenance** :
+   - **Sauvegarde complète (JSON)** → un fichier se télécharge.
+   - **Purger les parties terminées** → les lignes `game:*` terminées disparaissent.
+   - **Réinitialiser** (double confirmation) → toutes les clés partagées sont vidées.
+7. Vérification base après réinitialisation :
+   ```
+   SELECT cle FROM le_cercle.kv_store WHERE scope='';
+   ```
+   - ✅ `db:users` vide, `chat:global` vide, `gamesindex` vide, etc.
+
+---
+
+## 6. Robustesse de l'endpoint (optionnel, hors navigateur)
+
+Avec WampServer actif (`http://localhost/LeCercle/api/storage.php`) :
+
+| Cas | Requête | Attendu |
+|-----|---------|---------|
+| Méthode GET | `GET api/storage.php` | HTTP **405** |
+| Action inconnue | `{"action":"boom"}` | HTTP **400** |
+| Clé invalide | `key` avec espace / `/` / guillemet | HTTP **400** « Clé invalide » |
+| Valeur non-JSON | `set` avec `value` non JSON | HTTP **400** |
+| Config manquante | renommer `config.php` | HTTP **500** explicite |
+
+*(Ces cas ont déjà été validés via le serveur intégré PHP lors du développement ;
+les rejouer confirme la configuration Apache.)*
