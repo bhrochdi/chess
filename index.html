@@ -417,7 +417,12 @@
 <!-- ================= SALON ================= -->
 <div class="view" id="view-salon">
   <div class="card chatbox" style="max-width:760px; margin:0 auto; min-height:480px">
-    <h2>☕ Salon du Cercle — discussion générale <span class="small" id="salonOnline"></span></h2>
+    <h2 style="display:flex; align-items:center; gap:10px; flex-wrap:wrap">
+      <span>☕ Salon :</span>
+      <select id="salonRoomSel" style="font-size:13px; padding:4px 8px"></select>
+      <span class="small" id="salonOnline"></span>
+    </h2>
+    <p class="small" id="salonDesc" style="margin:-4px 0 8px"></p>
     <div class="chatlog" id="salonLog" style="max-height:430px" data-empty="Le salon est calme… Lance la conversation !"></div>
     <div class="chatinput">
       <input type="text" id="salonInput" maxlength="300" placeholder="Écrire au salon…">
@@ -2050,9 +2055,31 @@ async function saveRooms(rooms) {
 function roomById(id) { return roomsCache.find(r => r.id === id) || null; }
 
 let salonLen = 0;
+
+/* Remplit le menu déroulant avec les salons non archivés, triés par ordre.
+   Bascule activeRoomId sur « Général » si le salon courant a disparu/été archivé. */
+function populateSalonSelector(rooms) {
+  const visible = rooms.filter(r => !r.archive);
+  if (!visible.some(r => r.id === activeRoomId))
+    activeRoomId = visible.some(r => r.id === ROOM_DEFAULT) ? ROOM_DEFAULT : (visible[0] ? visible[0].id : ROOM_DEFAULT);
+  const sel = $('salonRoomSel');
+  sel.innerHTML = '';
+  for (const r of visible) {
+    const o = document.createElement('option');
+    o.value = r.id;
+    o.textContent = r.nom;
+    if (r.id === activeRoomId) o.selected = true;
+    sel.appendChild(o);
+  }
+  const active = visible.find(r => r.id === activeRoomId);
+  $('salonDesc').textContent = active ? (active.description || '') : '';
+}
+
 async function refreshSalon() {
   if (!HAS_STORAGE) return;
-  const log = (await sget('chat:global')) || [];
+  const rooms = await loadRooms();
+  populateSalonSelector(rooms);
+  const log = (await sget(roomKey(activeRoomId))) || [];
   if (log.length !== salonLen) {
     if (currentView !== 'salon' && log.length > salonLen && salonLen > 0) updateSalonBadge(log.length - salonLen);
     salonLen = log.length;
@@ -2068,6 +2095,15 @@ function updateSalonBadge(n) {
 }
 setInterval(() => { if (!document.hidden && (currentView === 'salon' || currentView === 'home')) refreshSalon(); }, 3000);
 
+/* Changement de salon : on repart d'une base propre (pas de faux badge). */
+$('salonRoomSel').addEventListener('change', e => {
+  activeRoomId = e.target.value;
+  salonLen = 0;
+  $('salonLog').innerHTML = '';
+  updateSalonBadge(0);
+  refreshSalon();
+});
+
 $('salonSend').addEventListener('click', sendSalon);
 $('salonInput').addEventListener('keydown', e => { if (e.key === 'Enter') sendSalon(); });
 async function sendSalon() {
@@ -2075,9 +2111,10 @@ async function sendSalon() {
   const v = $('salonInput').value.trim();
   if (!v) return;
   $('salonInput').value = '';
-  const log = (await sget('chat:global')) || [];
+  const k = roomKey(activeRoomId);
+  const log = (await sget(k)) || [];
   log.push({ from: pseudo, text: v, ts: Date.now() });
-  await sset('chat:global', log.slice(-80));
+  await sset(k, log.slice(-80));
   refreshSalon();
 }
 
