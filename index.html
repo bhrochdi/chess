@@ -1993,8 +1993,62 @@ async function sendGameChat() {
 }
 
 /* ============================================================
-   SALON — discussion générale en temps réel
+   SALON — discussions thématiques (plusieurs salons)
+   Modèle (stockage partagé) :
+   - db:rooms        : [{ id, nom, description, ordre, archive, creePar, creeLe }]
+   - chat:room:<id>  : messages du salon (même format que l'ancien chat:global)
 ============================================================ */
+const ROOM_DEFAULT = 'general';
+let activeRoomId = ROOM_DEFAULT;
+let roomsCache = [];
+const roomKey = id => 'chat:room:' + id;
+
+/* Identifiant sûr pour une clé (sans accent/espace/slash/guillemet), unique. */
+function slugRoomId(nom, existing) {
+  let base = String(nom).toLowerCase()
+    .normalize('NFD').replace(/[̀-ͯ]/g, '')   // retire les accents
+    .replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
+  if (!base) base = 'salon';
+  let id = base, n = 2;
+  while (existing.indexOf(id) >= 0) id = base + '-' + (n++);
+  return id;
+}
+
+/* Migration idempotente : crée « Général » et récupère l'ancien chat:global. */
+let _roomsSeed = null;
+function ensureRooms() {
+  if (!_roomsSeed) _roomsSeed = (async () => {
+    const existing = await sget('db:rooms');
+    if (Array.isArray(existing) && existing.length) return;
+    const seed = [{
+      id: ROOM_DEFAULT, nom: 'Général',
+      description: 'Discussion générale du Cercle',
+      ordre: 0, archive: false, creePar: 'système', creeLe: Date.now()
+    }];
+    const legacy = await sget('chat:global');
+    if (Array.isArray(legacy) && legacy.length) {
+      await sset(roomKey(ROOM_DEFAULT), legacy.slice(-80));
+      await sdel('chat:global');
+    }
+    await sset('db:rooms', seed);
+  })();
+  return _roomsSeed;
+}
+
+/* Liste des salons, triée par ordre (migration garantie au préalable). */
+async function loadRooms() {
+  await ensureRooms();
+  const r = await sget('db:rooms');
+  roomsCache = Array.isArray(r) ? r.slice().sort((a, b) => (a.ordre || 0) - (b.ordre || 0)) : [];
+  return roomsCache;
+}
+async function saveRooms(rooms) {
+  rooms.sort((a, b) => (a.ordre || 0) - (b.ordre || 0));
+  roomsCache = rooms;
+  await sset('db:rooms', rooms);
+}
+function roomById(id) { return roomsCache.find(r => r.id === id) || null; }
+
 let salonLen = 0;
 async function refreshSalon() {
   if (!HAS_STORAGE) return;
@@ -2397,6 +2451,7 @@ $('admReset').addEventListener('click', async () => {
 /* ===================== Démarrage ===================== */
 (async function boot() {
   await loadSession();
+  await ensureRooms();          // initialise « Général » + migre l'ancien chat:global
   if (pseudo) { heartbeat(); refreshThreads(); }
   refreshLobby();
   refreshSalon();
