@@ -487,6 +487,22 @@
         </div>
       </div>
 
+      <div class="card">
+        <h2>Salons — base JSON <code>db:rooms</code></h2>
+        <div style="display:flex; gap:8px; flex-wrap:wrap; margin-bottom:12px">
+          <input type="text" id="admRoomName" maxlength="40" placeholder="Nom du salon" style="flex:1; min-width:160px">
+          <input type="text" id="admRoomDesc" maxlength="120" placeholder="Description (facultatif)" style="flex:2; min-width:200px">
+          <button class="primary" id="admRoomCreate">＋ Créer le salon</button>
+        </div>
+        <p class="small" id="admRoomMsg" style="color:var(--check); min-height:16px; margin-bottom:8px"></p>
+        <div style="overflow-x:auto">
+          <table class="admin-table">
+            <thead><tr><th>Ordre</th><th>Nom</th><th>Description</th><th>État</th><th>Actions</th></tr></thead>
+            <tbody id="admRooms"></tbody>
+          </table>
+        </div>
+      </div>
+
       <div class="grid2">
         <div class="card">
           <h2>Parties</h2>
@@ -2242,6 +2258,7 @@ async function refreshAdmin() {
   if (!isAdmin()) return;
 
   const idx = await readIndex();
+  const rooms = await loadRooms();
   const salon = (await sget('chat:global')) || [];
   const players = await onlinePlayers();
   const banned = (await sget('db:banned')) || [];
@@ -2257,6 +2274,7 @@ async function refreshAdmin() {
     statCard(salon.length, 'Msgs salon');
 
   renderAdminUsers(users, banned);
+  renderAdminRooms(rooms);
   renderAdminGames(idx);
   renderAdminSalon(salon);
   renderAdminLog((await sget('db:adminlog')) || []);
@@ -2371,6 +2389,100 @@ async function adminDeleteGame(g) {
   await sdel('game:' + g.id);
   await sdel('gamechat:' + g.id);
   await adminLog('Suppression de la partie ' + g.id);
+  refreshAdmin();
+}
+
+/* -------- Gestion des salons -------- */
+function renderAdminRooms(rooms) {
+  const tb = $('admRooms');
+  tb.innerHTML = '';
+  rooms.forEach((r, i) => {
+    const tr = document.createElement('tr');
+    tr.innerHTML =
+      '<td class="small">' + (r.ordre != null ? r.ordre : i) + '</td>' +
+      '<td><strong>' + esc(r.nom) + '</strong>' + (r.id === ROOM_DEFAULT ? ' <span class="role-badge">DÉFAUT</span>' : '') + '</td>' +
+      '<td class="small">' + esc(r.description || '—') + '</td>' +
+      '<td class="small">' + (r.archive ? '<span class="ban-badge">ARCHIVÉ</span>' : 'Actif') + '</td>';
+    const td = document.createElement('td');
+    td.className = 'actions';
+    td.appendChild(adminBtn('↑', () => moveRoom(r.id, -1)));
+    td.appendChild(adminBtn('↓', () => moveRoom(r.id, 1)));
+    td.appendChild(adminBtn('Renommer', () => renameRoom(r.id)));
+    if (r.id !== ROOM_DEFAULT) {
+      td.appendChild(adminBtn(r.archive ? 'Désarchiver' : 'Archiver', () => toggleArchiveRoom(r.id)));
+      td.appendChild(adminBtn('Supprimer', () => deleteRoom(r.id), 'danger'));
+    }
+    tr.appendChild(td);
+    tb.appendChild(tr);
+  });
+}
+
+/* Nom unique (insensible à la casse), en ignorant éventuellement un salon. */
+function roomNameTaken(nom, exceptId) {
+  const n = nom.trim().toLowerCase();
+  return roomsCache.some(r => r.id !== exceptId && r.nom.trim().toLowerCase() === n);
+}
+
+$('admRoomCreate').addEventListener('click', async () => {
+  if (!isAdmin()) return;
+  const msg = $('admRoomMsg');
+  const nom = $('admRoomName').value.trim();
+  const desc = $('admRoomDesc').value.trim();
+  if (nom.length < 2) { msg.textContent = 'Nom trop court (2 caractères minimum).'; return; }
+  const rooms = await loadRooms();
+  if (roomNameTaken(nom)) { msg.textContent = 'Ce nom de salon est déjà pris.'; return; }
+  const id = slugRoomId(nom, rooms.map(r => r.id));
+  const ordre = rooms.reduce((mx, r) => Math.max(mx, r.ordre || 0), 0) + 1;
+  rooms.push({ id, nom, description: desc, ordre, archive: false, creePar: pseudo, creeLe: Date.now() });
+  await saveRooms(rooms);
+  await adminLog('Création du salon « ' + nom + ' »');
+  $('admRoomName').value = ''; $('admRoomDesc').value = ''; msg.textContent = '';
+  refreshAdmin();
+});
+
+async function renameRoom(id) {
+  const rooms = await loadRooms();
+  const r = rooms.find(x => x.id === id); if (!r) return;
+  const nv = prompt('Nouveau nom du salon :', r.nom);
+  if (nv === null) return;
+  const nom = nv.trim();
+  if (nom.length < 2) { alert('Nom trop court (2 caractères minimum).'); return; }
+  if (roomNameTaken(nom, id)) { alert('Ce nom de salon est déjà pris.'); return; }
+  const ancien = r.nom; r.nom = nom;
+  await saveRooms(rooms);
+  await adminLog('Salon « ' + ancien + ' » renommé « ' + nom + ' »');
+  refreshAdmin();
+}
+
+async function moveRoom(id, delta) {
+  const rooms = await loadRooms();   // déjà triés par ordre
+  const i = rooms.findIndex(r => r.id === id);
+  const j = i + delta;
+  if (i < 0 || j < 0 || j >= rooms.length) return;
+  const tmp = rooms[i].ordre; rooms[i].ordre = rooms[j].ordre; rooms[j].ordre = tmp;
+  await saveRooms(rooms);
+  refreshAdmin();
+}
+
+async function toggleArchiveRoom(id) {
+  if (id === ROOM_DEFAULT) return;          // « Général » toujours visible
+  const rooms = await loadRooms();
+  const r = rooms.find(x => x.id === id); if (!r) return;
+  r.archive = !r.archive;
+  await saveRooms(rooms);
+  await adminLog((r.archive ? 'Archivage' : 'Désarchivage') + ' du salon « ' + r.nom + ' »');
+  refreshAdmin();
+}
+
+async function deleteRoom(id) {
+  if (id === ROOM_DEFAULT) return;          // garde-fou : « Général » non supprimable
+  const rooms = await loadRooms();
+  const r = rooms.find(x => x.id === id); if (!r) return;
+  const ok = await askConfirm('Supprimer le salon ?', 'Le salon « ' + r.nom + ' » et tous ses messages seront supprimés.');
+  if (!ok) return;
+  await saveRooms(rooms.filter(x => x.id !== id));
+  await sdel(roomKey(id));
+  await adminLog('Suppression du salon « ' + r.nom + ' »');
   refreshAdmin();
 }
 
