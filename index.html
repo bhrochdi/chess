@@ -2373,6 +2373,46 @@ async function deleteTournament(id) {
   await sset('db:tournaments', list);
 }
 
+/* -------- Génération round-robin (algorithme du cercle) --------
+   Renvoie n-1 rondes ; chaque joueur en rencontre un autre par ronde.
+   Nombre impair -> un joueur « exempt » (null) chaque ronde.
+   Les couleurs alternent globalement selon la parité de la ronde. */
+function genererRoundRobin(participants) {
+  const arr = participants.slice();
+  if (arr.length % 2 === 1) arr.push(null);   // joueur exempt
+  const n = arr.length;
+  const rondes = [];
+  for (let r = 0; r < n - 1; r++) {
+    const matchs = [];
+    for (let i = 0; i < n / 2; i++) {
+      const a = arr[i], b = arr[n - 1 - i];
+      if (a === null || b === null) continue;  // l'exempt ne joue pas
+      const blanc = (r % 2 === 0) ? a : b;
+      const noir  = (r % 2 === 0) ? b : a;
+      matchs.push({ blanc, noir, gameId: null, resultat: null });
+    }
+    rondes.push({ numero: r + 1, matchs });
+    arr.splice(1, 0, arr.pop());              // rotation, index 0 fixe
+  }
+  return rondes;
+}
+
+/* -------- Barème et classement --------
+   Victoire 1, nulle 0,5, défaite 0. Tri : points, puis victoires, puis pseudo. */
+function calculerClassement(T) {
+  const stats = {};
+  for (const p of T.participants) stats[p] = { pseudo: p, points: 0, joues: 0, victoires: 0 };
+  for (const ronde of T.rondes) for (const m of ronde.matchs) {
+    if (!m.resultat || !stats[m.blanc] || !stats[m.noir]) continue;
+    stats[m.blanc].joues++; stats[m.noir].joues++;
+    if (m.resultat === '1-0') { stats[m.blanc].points += 1; stats[m.blanc].victoires++; }
+    else if (m.resultat === '0-1') { stats[m.noir].points += 1; stats[m.noir].victoires++; }
+    else { stats[m.blanc].points += 0.5; stats[m.noir].points += 0.5; }
+  }
+  return Object.values(stats).sort((a, b) =>
+    b.points - a.points || b.victoires - a.victoires || a.pseudo.localeCompare(b.pseudo));
+}
+
 /* ============================================================
    ESPACE ADMINISTRATION
    Rôle 'admin' : 1er compte créé, attribué par un autre admin,
