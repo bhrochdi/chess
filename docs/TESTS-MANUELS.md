@@ -224,3 +224,48 @@ ces scénarios couvrent l'usage réel en navigateur.
 3. **Vider** → confirme avec le nom du salon, vide `chat:room:<id>` ciblé.
    - ✅ Le compteur « Msgs salons » du tableau de bord (somme de tous les
      salons) diminue en conséquence.
+
+---
+
+## 8. Tournois (`feat/admin-tournois`)
+
+Round-robin uniquement (Étape 1+2). La génération d'appariement est couverte
+par un **test unitaire** : `node tests/round-robin.test.js` (doit afficher
+« TOUS LES TESTS PASSENT »).
+
+### 8.1 Administration — cycle de vie (compte admin)
+1. Onglet **⚙ Admin** → carte **Tournois** → créer « Open du Cercle »
+   (cadence 5 min). ✅ Apparaît dans la table, statut **Inscriptions ouvertes**.
+   - ✅ Recréer le même nom → message « nom déjà pris ».
+2. **Gérer** → **Lancer** avec 0/1 inscrit → refusé (« au moins 2 inscrits »).
+3. Faire inscrire ≥ 2 joueurs (cf. 8.2), puis **Lancer**.
+   - ✅ Statut **En cours**, rondes générées, parties de la ronde 1 créées
+     (visibles dans **Parties** et dans `gamesindex`).
+   - ✅ Tenter de lancer un **2ᵉ** tournoi → refusé (un seul en cours à la fois).
+4. **Saisir un résultat** d'un match via `1-0` / `½` / `0-1` (ou `✕` pour effacer).
+   - ✅ Le **classement** se met à jour (1 / 0,5 / 0, tri points puis victoires).
+5. **Ronde suivante** : si des résultats manquent, une confirmation s'affiche ;
+   sinon la ronde avance et ses parties sont créées.
+6. **Clore** → statut **Terminé**, classement figé. **Supprimer** → confirmation,
+   puis le tournoi et ses parties (`game:*`/`gamechat:*`) disparaissent.
+7. ✅ Chaque action est tracée dans le **journal d'administration**.
+
+### 8.2 Utilisateur — inscription et jeu (deux navigateurs)
+1. **Alice** et **Bob** : onglet **Tournois** → ouvrir le tournoi → **M'inscrire**.
+   - ✅ `nbInscrits` augmente ; **Me désinscrire** fonctionne tant que les
+     inscriptions sont ouvertes. Inscriptions fermées → boutons masqués.
+2. Après lancement (admin), chaque joueur voit **« ♟ Jouer ma partie (ronde N) »**.
+   - ✅ Le clic ouvre la partie dans **Partie en ligne** (`BoardUI` inchangé) ;
+     Alice et Bob jouent normalement (pendules, abandon, nulle, PGN).
+3. À la fin de la partie (mat/abandon/nulle/pendule) :
+   - ✅ De retour sur **Tournois** (ou après ≤ 6 s de polling), le résultat
+     **remonte automatiquement** dans la grille et le classement (report *pull*).
+4. ✅ Un non-participant peut **👁 Suivre** une partie ; la ligne « moi » du
+   classement et mon match courant sont surlignés.
+
+### 8.3 Vérification base
+```
+SELECT cle FROM le_cercle.kv_store WHERE scope='' AND (cle='db:tournaments' OR cle LIKE 'tournament:%');
+```
+- ✅ `db:tournaments` (index léger) et un `tournament:<id>` par tournoi.
+- ✅ Les `game:<id>` de tournoi portent `tournamentId`/`rondeId`/`matchIndex`.
