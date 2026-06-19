@@ -4,6 +4,9 @@ api/config.php
 # Journaux
 *.log
 
+# Fichiers de travail / brouillons non versionnés
+index___.html
+
 # Fichiers système / éditeurs
 Thumbs.db
 .DS_Store
