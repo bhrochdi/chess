@@ -2413,6 +2413,49 @@ function calculerClassement(T) {
     b.points - a.points || b.victoires - a.victoires || a.pseudo.localeCompare(b.pseudo));
 }
 
+/* -------- Intégration avec les parties en ligne --------
+   Crée les parties d'une ronde (pré-assignées, pendule non démarrée) avec un
+   lien retour vers le tournoi. Réutilise game:<id> / gamesindex sans rien
+   modifier au moteur ni à la synchro existante. */
+async function creerPartiesRonde(T, numeroRonde) {
+  const ronde = (T.rondes || []).find(r => r.numero === numeroRonde);
+  if (!ronde) return;
+  for (let mi = 0; mi < ronde.matchs.length; mi++) {
+    const m = ronde.matchs[mi];
+    if (m.gameId) continue;
+    const id = 'g' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+    const R = {
+      id, status: 'playing', tc: T.cadence,
+      white: m.blanc, black: m.noir,
+      G: newG(T.cadence),
+      drawOffer: null, result: null, reason: null, ts: Date.now(),
+      tournamentId: T.id, rondeId: numeroRonde, matchIndex: mi
+    };
+    await sset('game:' + id, R);
+    const idx = await readIndex();
+    idx.push({ id, status: 'playing', white: R.white, black: R.black, tc: T.cadence, ts: Date.now() });
+    await writeIndex(idx);
+    m.gameId = id;
+  }
+}
+
+/* Report « pull » : recopie les résultats des parties terminées dans les
+   matchs, recalcule le classement et enregistre. Renvoie true si changement. */
+async function syncResultatsTournoi(T) {
+  let change = false;
+  for (const ronde of T.rondes || []) for (const m of ronde.matchs) {
+    if (m.gameId && !m.resultat) {
+      const g = await sget('game:' + m.gameId);
+      if (g && g.status === 'finished' && g.result) { m.resultat = g.result; change = true; }
+    }
+  }
+  if (change) {
+    T.classement = calculerClassement(T);
+    await saveTournament(T);
+  }
+  return change;
+}
+
 /* ============================================================
    ESPACE ADMINISTRATION
    Rôle 'admin' : 1er compte créé, attribué par un autre admin,
