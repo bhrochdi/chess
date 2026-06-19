@@ -612,6 +612,30 @@
         </div>
       </div>
 
+      <div class="card">
+        <h2>Tournois — base JSON <code>db:tournaments</code></h2>
+        <div style="display:flex; gap:8px; flex-wrap:wrap; margin-bottom:8px">
+          <input type="text" id="admTournNom" maxlength="40" placeholder="Nom du tournoi" style="flex:2; min-width:160px">
+          <select id="admTournTc" style="flex:1; min-width:150px">
+            <option value="180|2">Blitz — 3 min + 2 s</option>
+            <option value="300|0" selected>Blitz — 5 min</option>
+            <option value="600|0">Rapide — 10 min</option>
+            <option value="900|10">Rapide — 15 min + 10 s</option>
+            <option value="inf">Sans pendule</option>
+          </select>
+          <button class="primary" id="admTournCreate">＋ Créer</button>
+        </div>
+        <input type="text" id="admTournDesc" maxlength="140" placeholder="Description (facultatif)" style="width:100%; margin-bottom:8px">
+        <p class="small" id="admTournMsg" style="color:var(--check); min-height:16px; margin-bottom:8px"></p>
+        <div style="overflow-x:auto">
+          <table class="admin-table">
+            <thead><tr><th>Nom</th><th>Format</th><th>Statut</th><th>Inscrits</th><th>Actions</th></tr></thead>
+            <tbody id="admTournList"></tbody>
+          </table>
+        </div>
+        <div id="admTournDetail" style="margin-top:14px"></div>
+      </div>
+
       <div class="grid2">
         <div class="card">
           <h2>Parties</h2>
@@ -2522,6 +2546,7 @@ async function refreshAdmin() {
 
   renderAdminUsers(users, banned);
   renderAdminRooms(rooms);
+  await renderAdminTournois();
   renderAdminGames(idx);
   populateModRoomSelector(rooms);
   renderAdminSalon(roomMsgs[admModRoomId] || []);
@@ -2787,6 +2812,186 @@ $('admClearSalon').addEventListener('click', async () => {
   await adminLog('Salon « ' + nom + ' » vidé');
   refreshAdmin();
 });
+
+/* -------- Tournois (administration) -------- */
+let admTournSel = null;
+
+function statutLabelTourn(s) {
+  return s === 'inscriptions' ? 'Inscriptions ouvertes' : s === 'en-cours' ? 'En cours' : 'Terminé';
+}
+function tcLabelTourn(tc) {
+  if (!tc) return 'sans pendule';
+  return Math.round(tc.base / 60) + ' min' + (tc.inc ? ' + ' + tc.inc + ' s' : '');
+}
+
+async function renderAdminTournois() {
+  const list = await loadTournaments();
+  const tb = $('admTournList');
+  tb.innerHTML = '';
+  for (const t of list) {
+    const tr = document.createElement('tr');
+    tr.innerHTML =
+      '<td><strong>' + esc(t.nom) + '</strong></td>' +
+      '<td class="small">' + esc(t.format) + '</td>' +
+      '<td class="small">' + statutLabelTourn(t.statut) + '</td>' +
+      '<td class="small">' + t.nbInscrits + '</td>';
+    const td = document.createElement('td'); td.className = 'actions';
+    td.appendChild(adminBtn(admTournSel === t.id ? '✓ Géré' : 'Gérer', () => { admTournSel = t.id; renderAdminTournois(); }));
+    td.appendChild(adminBtn('Supprimer', () => supprimerTournoi(t.id), 'danger'));
+    tr.appendChild(td); tb.appendChild(tr);
+  }
+  await renderAdminTournDetail();
+}
+
+async function renderAdminTournDetail() {
+  const box = $('admTournDetail');
+  box.innerHTML = '';
+  if (!admTournSel) return;
+  const T = await getTournament(admTournSel);
+  if (!T) { admTournSel = null; return; }
+  await syncResultatsTournoi(T);   // recopie les résultats des parties terminées
+
+  const head = document.createElement('div');
+  head.innerHTML = '<h2 style="color:var(--gold)">' + esc(T.nom) + ' — ' + statutLabelTourn(T.statut) +
+    ' <span class="small">(' + esc(T.format) + ', ' + tcLabelTourn(T.cadence) + ')</span></h2>' +
+    (T.description ? '<p class="small">' + esc(T.description) + '</p>' : '');
+  box.appendChild(head);
+
+  const bar = document.createElement('div'); bar.className = 'toolbar'; bar.style.margin = '8px 0';
+  if (T.statut === 'inscriptions') {
+    bar.appendChild(adminBtn(T.inscriptionsOuvertes ? 'Fermer les inscriptions' : 'Ouvrir les inscriptions', () => basculerInscriptions(T.id)));
+    bar.appendChild(adminBtn('Lancer le tournoi', () => lancerTournoi(T.id), 'primary'));
+  } else if (T.statut === 'en-cours') {
+    if (T.rondeCourante < T.rondes.length) bar.appendChild(adminBtn('Ronde suivante', () => rondeSuivante(T.id)));
+    bar.appendChild(adminBtn('Clore le tournoi', () => cloreTournoi(T.id), 'danger'));
+  }
+  box.appendChild(bar);
+
+  const pdiv = document.createElement('div');
+  pdiv.innerHTML = '<p class="small" style="margin:6px 0"><strong>Inscrits (' + T.participants.length + ')</strong> : ' +
+    (T.participants.length ? T.participants.map(esc).join(', ') : '—') + '</p>';
+  box.appendChild(pdiv);
+
+  for (const ronde of T.rondes) {
+    const showResults = T.statut !== 'inscriptions' && ronde.numero <= T.rondeCourante;
+    const rdiv = document.createElement('div'); rdiv.style.margin = '10px 0';
+    const titre = document.createElement('p'); titre.className = 'small';
+    titre.innerHTML = '<strong>Ronde ' + ronde.numero + (ronde.numero === T.rondeCourante ? ' — courante' : '') + '</strong>';
+    rdiv.appendChild(titre);
+    ronde.matchs.forEach((m, mi) => {
+      const row = document.createElement('div'); row.className = 'item';
+      row.innerHTML = '<span class="small">' + esc(m.blanc) + ' <span style="color:var(--muted)">vs</span> ' +
+        esc(m.noir) + ' &nbsp; <strong>' + (m.resultat || '—') + '</strong></span>';
+      if (showResults) {
+        const ctl = document.createElement('span'); ctl.className = 'actions';
+        [['1-0', '1-0'], ['½', '1/2-1/2'], ['0-1', '0-1'], ['✕', null]].forEach(([lbl, val]) =>
+          ctl.appendChild(adminBtn(lbl, () => saisirResultat(T.id, ronde.numero, mi, val))));
+        row.appendChild(ctl);
+      }
+      rdiv.appendChild(row);
+    });
+    box.appendChild(rdiv);
+  }
+
+  if (T.classement && T.classement.length) {
+    const ctab = document.createElement('div');
+    let html = '<p class="small" style="margin:8px 0 4px"><strong>Classement</strong></p>' +
+      '<table class="admin-table"><thead><tr><th>#</th><th>Joueur</th><th>Pts</th><th>J</th><th>V</th></tr></thead><tbody>';
+    T.classement.forEach((c, i) => {
+      html += '<tr><td class="small">' + (i + 1) + '</td><td>' + esc(c.pseudo) + '</td><td class="small">' +
+        c.points + '</td><td class="small">' + c.joues + '</td><td class="small">' + (c.victoires || 0) + '</td></tr>';
+    });
+    ctab.innerHTML = html + '</tbody></table>';
+    box.appendChild(ctab);
+  }
+}
+
+$('admTournCreate').addEventListener('click', async () => {
+  if (!isAdmin()) return;
+  const msg = $('admTournMsg');
+  const nom = $('admTournNom').value.trim();
+  if (nom.length < 2) { msg.textContent = 'Nom trop court (2 caractères minimum).'; return; }
+  const list = await loadTournaments();
+  if (list.some(t => t.nom.trim().toLowerCase() === nom.toLowerCase())) { msg.textContent = 'Ce nom de tournoi est déjà pris.'; return; }
+  const tcv = $('admTournTc').value;
+  const cadence = tcv === 'inf' ? null : { base: +tcv.split('|')[0], inc: +tcv.split('|')[1] };
+  const id = 't' + Date.now().toString(36) + Math.random().toString(36).slice(2, 5);
+  const T = {
+    id, nom, description: $('admTournDesc').value.trim(),
+    format: 'round-robin', cadence,
+    statut: 'inscriptions', inscriptionsOuvertes: true,
+    participants: [], rondes: [], classement: [], rondeCourante: 0,
+    creePar: pseudo, creeLe: Date.now(), debutLe: null
+  };
+  await saveTournament(T);
+  await adminLog('Création du tournoi « ' + nom + ' »');
+  $('admTournNom').value = ''; $('admTournDesc').value = ''; msg.textContent = '';
+  admTournSel = id;
+  renderAdminTournois();
+});
+
+async function basculerInscriptions(id) {
+  const T = await getTournament(id); if (!T || T.statut !== 'inscriptions') return;
+  T.inscriptionsOuvertes = !T.inscriptionsOuvertes;
+  await saveTournament(T);
+  await adminLog('Tournoi « ' + T.nom + ' » : inscriptions ' + (T.inscriptionsOuvertes ? 'ouvertes' : 'fermées'));
+  renderAdminTournois();
+}
+async function lancerTournoi(id) {
+  const T = await getTournament(id); if (!T || T.statut !== 'inscriptions') return;
+  if (T.participants.length < 2) { alert('Au moins 2 joueurs inscrits sont nécessaires.'); return; }
+  const list = await loadTournaments();
+  if (list.some(x => x.statut === 'en-cours' && x.id !== id)) { alert('Un autre tournoi est déjà en cours (un seul à la fois).'); return; }
+  T.rondes = genererRoundRobin(T.participants);
+  T.statut = 'en-cours'; T.inscriptionsOuvertes = false; T.rondeCourante = 1; T.debutLe = Date.now();
+  await creerPartiesRonde(T, 1);
+  T.classement = calculerClassement(T);
+  await saveTournament(T);
+  await adminLog('Lancement du tournoi « ' + T.nom + ' » (' + T.participants.length + ' joueurs)');
+  renderAdminTournois();
+}
+async function rondeSuivante(id) {
+  const T = await getTournament(id); if (!T || T.statut !== 'en-cours') return;
+  if (T.rondeCourante >= T.rondes.length) { alert('Dernière ronde atteinte — clôturez le tournoi.'); return; }
+  const courante = T.rondes.find(r => r.numero === T.rondeCourante);
+  if (courante && courante.matchs.some(m => !m.resultat)) {
+    const ok = await askConfirm('Ronde incomplète', 'Des résultats manquent à la ronde ' + T.rondeCourante + '. Passer quand même à la suivante ?');
+    if (!ok) return;
+  }
+  T.rondeCourante++;
+  await creerPartiesRonde(T, T.rondeCourante);
+  await saveTournament(T);
+  await adminLog('Tournoi « ' + T.nom + ' » : passage à la ronde ' + T.rondeCourante);
+  renderAdminTournois();
+}
+async function cloreTournoi(id) {
+  const T = await getTournament(id); if (!T || T.statut !== 'en-cours') return;
+  const ok = await askConfirm('Clore le tournoi ?', 'Le classement final sera figé.');
+  if (!ok) return;
+  T.statut = 'termine'; T.classement = calculerClassement(T);
+  await saveTournament(T);
+  await adminLog('Clôture du tournoi « ' + T.nom + ' »');
+  renderAdminTournois();
+}
+async function supprimerTournoi(id) {
+  const T = await getTournament(id);
+  const ok = await askConfirm('Supprimer le tournoi ?', 'Le tournoi « ' + (T ? T.nom : id) + ' » et ses parties seront supprimés.');
+  if (!ok) return;
+  await deleteTournament(id);
+  if (admTournSel === id) admTournSel = null;
+  await adminLog('Suppression du tournoi « ' + (T ? T.nom : id) + ' »');
+  renderAdminTournois();
+}
+async function saisirResultat(id, numero, mi, resultat) {
+  const T = await getTournament(id); if (!T) return;
+  const ronde = (T.rondes || []).find(r => r.numero === numero); if (!ronde) return;
+  const m = ronde.matchs[mi]; if (!m) return;
+  m.resultat = resultat;
+  T.classement = calculerClassement(T);
+  await saveTournament(T);
+  await adminLog('Tournoi « ' + T.nom + ' » : R' + numero + ' ' + m.blanc + '–' + m.noir + ' = ' + (resultat || 'effacé'));
+  renderAdminTournois();
+}
 
 /* -------- Journal -------- */
 function renderAdminLog(log) {
