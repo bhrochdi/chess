@@ -2325,6 +2325,55 @@ async function sendDm() {
 }
 
 /* ============================================================
+   TOURNOIS — modèle de données et couche d'accès
+   Modèle (stockage partagé) :
+   - db:tournaments    : index léger [{ id, nom, format, cadence, statut,
+                          nbInscrits, debutLe }]
+   - tournament:<id>   : détail complet { id, nom, description, format,
+                          cadence (tc {base,inc}|null), statut, participants,
+                          rondes:[{numero, matchs:[{blanc,noir,gameId,resultat}]}],
+                          classement:[{pseudo,points,joues,victoires}],
+                          rondeCourante, creePar, creeLe }
+   Statuts : 'inscriptions' -> 'en-cours' -> 'termine'.
+============================================================ */
+const tournKey = id => 'tournament:' + id;
+
+async function loadTournaments() {
+  const t = await sget('db:tournaments');
+  return Array.isArray(t) ? t : [];
+}
+async function getTournament(id) { return await sget(tournKey(id)); }
+
+/* Met à jour (ou insère) l'entrée légère dans db:tournaments. */
+async function syncTournamentIndex(T) {
+  const list = await loadTournaments();
+  const entry = {
+    id: T.id, nom: T.nom, format: T.format, cadence: T.cadence,
+    statut: T.statut, nbInscrits: T.participants.length, debutLe: T.debutLe || null
+  };
+  const i = list.findIndex(x => x.id === T.id);
+  if (i >= 0) list[i] = entry; else list.push(entry);
+  await sset('db:tournaments', list);
+}
+
+/* Écrit le détail + resynchronise l'index. */
+async function saveTournament(T) {
+  await sset(tournKey(T.id), T);
+  await syncTournamentIndex(T);
+}
+
+/* Supprime un tournoi (détail + entrée d'index + parties liées). */
+async function deleteTournament(id) {
+  const T = await getTournament(id);
+  if (T) for (const ronde of T.rondes || []) for (const m of ronde.matchs) {
+    if (m.gameId) { await sdel('game:' + m.gameId); await sdel('gamechat:' + m.gameId); }
+  }
+  await sdel(tournKey(id));
+  const list = (await loadTournaments()).filter(x => x.id !== id);
+  await sset('db:tournaments', list);
+}
+
+/* ============================================================
    ESPACE ADMINISTRATION
    Rôle 'admin' : 1er compte créé, attribué par un autre admin,
    ou revendiqué si aucun admin n'existe (migration).
