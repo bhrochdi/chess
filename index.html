@@ -344,6 +344,7 @@
   <button data-view="online" id="navOnline">Partie en ligne</button>
   <button data-view="salon">Salon <span class="badge" id="salonBadge" hidden></span></button>
   <button data-view="dm">Messages <span class="badge" id="dmBadge" hidden></span></button>
+  <button data-view="tournois">Tournois</button>
   <button data-view="admin" id="navAdmin" style="display:none">⚙ Admin</button>
 </nav>
 
@@ -560,6 +561,20 @@
           <button class="primary" id="dmSend" disabled>➤</button>
         </div>
       </div>
+    </div>
+  </div>
+</div>
+
+<!-- ================= TOURNOIS ================= -->
+<div class="view" id="view-tournois">
+  <div class="stack">
+    <div class="card">
+      <h2>🏆 Tournois</h2>
+      <p class="small" id="tournLoginHint" style="display:none">Connecte-toi pour t'inscrire à un tournoi.</p>
+      <div class="list" id="tournList" data-empty="Aucun tournoi pour le moment."></div>
+    </div>
+    <div class="card" id="tournDetailCard" style="display:none">
+      <div id="tournDetail"></div>
     </div>
   </div>
 </div>
@@ -1411,6 +1426,7 @@ function switchView(v) {
   if (v === 'home') refreshLobby();
   if (v === 'salon') { updateSalonBadge(0); refreshSalon(); }
   if (v === 'dm') refreshThreads();
+  if (v === 'tournois') refreshTournois();
   if (v === 'admin') refreshAdmin();
 }
 
@@ -3083,6 +3099,133 @@ $('admReset').addEventListener('click', async () => {
   refreshAdmin();
   switchView('home');
 });
+
+/* ============================================================
+   VUE TOURNOIS (utilisateur)
+============================================================ */
+let tournSel = null;
+
+async function refreshTournois() {
+  if (!HAS_STORAGE) return;
+  $('tournLoginHint').style.display = pseudo ? 'none' : '';
+  const list = await loadTournaments();
+  const ordre = { 'en-cours': 0, 'inscriptions': 1, 'termine': 2 };
+  list.sort((a, b) => (ordre[a.statut] - ordre[b.statut]));
+  const box = $('tournList');
+  box.innerHTML = '';
+  for (const t of list) {
+    const item = document.createElement('div'); item.className = 'item';
+    item.innerHTML = '<span><strong>' + esc(t.nom) + '</strong> <span class="small">· ' +
+      statutLabelTourn(t.statut) + ' · ' + t.nbInscrits + ' inscrits · ' + tcLabelTourn(t.cadence) + '</span></span>';
+    const b = document.createElement('button');
+    b.textContent = tournSel === t.id ? '✓ Ouvert' : 'Voir';
+    b.addEventListener('click', () => { tournSel = t.id; refreshTournois(); });
+    item.appendChild(b);
+    box.appendChild(item);
+  }
+  await renderTournDetail();
+}
+
+async function renderTournDetail() {
+  const card = $('tournDetailCard'), box = $('tournDetail');
+  if (!tournSel) { card.style.display = 'none'; box.innerHTML = ''; return; }
+  const T = await getTournament(tournSel);
+  if (!T) { tournSel = null; card.style.display = 'none'; return; }
+  await syncResultatsTournoi(T);
+  card.style.display = ''; box.innerHTML = '';
+
+  const head = document.createElement('div');
+  head.innerHTML = '<h2 style="color:var(--gold)">' + esc(T.nom) + ' — ' + statutLabelTourn(T.statut) +
+    ' <span class="small">(' + esc(T.format) + ', ' + tcLabelTourn(T.cadence) + ')</span></h2>' +
+    (T.description ? '<p class="small">' + esc(T.description) + '</p>' : '');
+  box.appendChild(head);
+
+  if (T.statut === 'inscriptions') {
+    const inscrit = pseudo && T.participants.includes(pseudo);
+    const bar = document.createElement('div'); bar.className = 'toolbar'; bar.style.margin = '8px 0';
+    if (!T.inscriptionsOuvertes) {
+      bar.innerHTML = '<span class="small">Les inscriptions sont fermées.</span>';
+    } else {
+      const b = document.createElement('button');
+      b.className = inscrit ? 'danger' : 'primary';
+      b.textContent = inscrit ? 'Me désinscrire' : "M'inscrire";
+      b.addEventListener('click', () => inscrit ? desinscrireTournoi(T.id) : inscrireTournoi(T.id));
+      bar.appendChild(b);
+    }
+    box.appendChild(bar);
+  }
+
+  if (T.statut === 'en-cours' && pseudo) {
+    const ronde = T.rondes.find(r => r.numero === T.rondeCourante);
+    const m = ronde && ronde.matchs.find(x => x.blanc === pseudo || x.noir === pseudo);
+    if (m && m.gameId && !m.resultat) {
+      const bar = document.createElement('div'); bar.style.margin = '8px 0';
+      const b = document.createElement('button'); b.className = 'primary';
+      b.textContent = '♟ Jouer ma partie (ronde ' + T.rondeCourante + ')';
+      b.addEventListener('click', () => { enterOnlineGame(m.gameId); switchView('online'); });
+      bar.appendChild(b);
+      box.appendChild(bar);
+    }
+  }
+
+  const pdiv = document.createElement('div');
+  pdiv.innerHTML = '<p class="small" style="margin:6px 0"><strong>Inscrits (' + T.participants.length + ')</strong> : ' +
+    (T.participants.length ? T.participants.map(esc).join(', ') : '—') + '</p>';
+  box.appendChild(pdiv);
+
+  for (const ronde of T.rondes) {
+    if (T.statut !== 'inscriptions' && ronde.numero > T.rondeCourante) continue;  // ronde pas encore ouverte
+    const rdiv = document.createElement('div'); rdiv.style.margin = '10px 0';
+    const titre = document.createElement('p'); titre.className = 'small';
+    titre.innerHTML = '<strong>Ronde ' + ronde.numero + (ronde.numero === T.rondeCourante ? ' — courante' : '') + '</strong>';
+    rdiv.appendChild(titre);
+    ronde.matchs.forEach(m => {
+      const row = document.createElement('div'); row.className = 'item';
+      if (m.blanc === pseudo || m.noir === pseudo) row.style.borderColor = 'var(--gold-deep)';
+      row.innerHTML = '<span class="small">' + esc(m.blanc) + ' <span style="color:var(--muted)">vs</span> ' +
+        esc(m.noir) + ' &nbsp; <strong>' + (m.resultat || '—') + '</strong></span>';
+      if (m.gameId) {
+        const b = document.createElement('button');
+        b.textContent = m.resultat ? 'Revoir' : '👁 Suivre';
+        b.addEventListener('click', () => { enterOnlineGame(m.gameId); switchView('online'); });
+        row.appendChild(b);
+      }
+      rdiv.appendChild(row);
+    });
+    box.appendChild(rdiv);
+  }
+
+  if (T.classement && T.classement.length) {
+    const ctab = document.createElement('div');
+    let html = '<p class="small" style="margin:8px 0 4px"><strong>Classement</strong></p>' +
+      '<table class="admin-table"><thead><tr><th>#</th><th>Joueur</th><th>Pts</th><th>J</th><th>V</th></tr></thead><tbody>';
+    T.classement.forEach((c, i) => {
+      const moi = c.pseudo === pseudo;
+      html += '<tr' + (moi ? ' style="color:var(--gold-bright)"' : '') + '><td class="small">' + (i + 1) + '</td><td>' +
+        esc(c.pseudo) + '</td><td class="small">' + c.points + '</td><td class="small">' + c.joues +
+        '</td><td class="small">' + (c.victoires || 0) + '</td></tr>';
+    });
+    ctab.innerHTML = html + '</tbody></table>';
+    box.appendChild(ctab);
+  }
+}
+
+async function inscrireTournoi(id) {
+  if (!requirePseudo()) return;
+  const T = await getTournament(id);
+  if (!T || T.statut !== 'inscriptions' || !T.inscriptionsOuvertes) return;
+  if (!T.participants.includes(pseudo)) { T.participants.push(pseudo); await saveTournament(T); }
+  refreshTournois();
+}
+async function desinscrireTournoi(id) {
+  const T = await getTournament(id);
+  if (!T || T.statut !== 'inscriptions') return;
+  T.participants = T.participants.filter(p => p !== pseudo);
+  await saveTournament(T);
+  refreshTournois();
+}
+
+setInterval(() => { if (currentView === 'tournois' && !document.hidden) refreshTournois(); }, 6000);
 
 /* ===================== Démarrage ===================== */
 (async function boot() {
