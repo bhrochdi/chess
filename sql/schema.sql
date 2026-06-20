@@ -28,3 +28,37 @@ CREATE TABLE IF NOT EXISTS kv_store (
   PRIMARY KEY (cle, scope),
   KEY idx_scope_cle (scope, cle)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- ------------------------------------------------------------
+--  Comptes utilisateurs — authentification côté serveur.
+--  Le mot de passe n'est stocké QUE haché (password_hash). Les
+--  colonnes legacy_* ne servent qu'à la migration depuis l'ancienne
+--  base JSON db:users (hachage client) ; elles sont effacées dès la
+--  première connexion réussie (ré-hachage en password_hash).
+-- ------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS users (
+  id          VARCHAR(32)  NOT NULL,
+  pseudo      VARCHAR(16)  NOT NULL,
+  email       VARCHAR(120) DEFAULT NULL,
+  provider    VARCHAR(20)  NOT NULL DEFAULT 'local',
+  role        VARCHAR(10)  NOT NULL DEFAULT 'user',
+  pass_hash   VARCHAR(255) DEFAULT NULL,
+  legacy_salt VARCHAR(64)  DEFAULT NULL,
+  legacy_hash VARCHAR(128) DEFAULT NULL,
+  banned      TINYINT(1)   NOT NULL DEFAULT 0,
+  stats       JSON         NOT NULL,
+  created_at  BIGINT       NOT NULL,
+  PRIMARY KEY (id),
+  UNIQUE KEY uniq_pseudo (pseudo),
+  UNIQUE KEY uniq_email (email)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- ------------------------------------------------------------
+--  Comptabilisation des résultats : une partie ne compte qu'une
+--  fois par joueur (idempotence des statistiques V/D/N).
+-- ------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS stat_records (
+  game_id VARCHAR(40) NOT NULL,
+  user_id VARCHAR(32) NOT NULL,
+  PRIMARY KEY (game_id, user_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
