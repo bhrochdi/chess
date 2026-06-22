@@ -1587,8 +1587,28 @@ const validEmail = e => /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(e);
 const cleanPseudo = v => v.trim().replace(/[^a-zA-Z0-9_\-]/g, '').slice(0, 16);
 const newSalt = () => Math.random().toString(36).slice(2) + Date.now().toString(36);
 
-async function dbUsers() { return (await sget(DB_USERS)) || []; }
-async function dbSaveUsers(list) { await sset(DB_USERS, list.slice(0, 300)); }
+/* Appel à l'endpoint d'authentification serveur (mode PHP uniquement). */
+async function apiAuth(action, payload) {
+  const res = await fetch('api/auth.php', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    credentials: 'same-origin',
+    body: JSON.stringify(Object.assign({ action }, payload || {}))
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok || !data.ok) throw new Error((data && data.error) || ('HTTP ' + res.status));
+  return data;
+}
+
+/* Liste des comptes : serveur (champs publics) en mode PHP, base JSON sinon. */
+async function dbUsers() {
+  if (USE_PHP) { try { return (await apiAuth('list')).users || []; } catch (e) { return []; } }
+  return (await sget(DB_USERS)) || [];
+}
+async function dbSaveUsers(list) {
+  if (USE_PHP) return;                 // en mode serveur, les écritures passent par api/auth.php
+  await sset(DB_USERS, list.slice(0, 300));
+}
 
 async function hashPass(salt, pass) {
   const txt = salt + '::' + pass;
@@ -1683,6 +1703,11 @@ async function authSubmitAction() {
     if (!validEmail(email)) { msg.textContent = 'Adresse e-mail invalide.'; return; }
     if (ps.length < 2) { msg.textContent = 'Pseudo : 2 à 16 caractères (lettres, chiffres, - _).'; return; }
     if (pass.length < 6) { msg.textContent = 'Mot de passe : 6 caractères minimum.'; return; }
+    if (USE_PHP) {
+      try { const r = await apiAuth('register', { pseudo: ps, email, password: pass }); await finishLogin(r.user); }
+      catch (e) { msg.textContent = e.message; }
+      return;
+    }
     const users = await dbUsers();
     if (users.some(u => u.pseudo.toLowerCase() === ps.toLowerCase())) { msg.textContent = 'Ce pseudo est déjà pris.'; return; }
     if (users.some(u => u.email === email)) { msg.textContent = 'Un compte existe déjà avec cet e-mail.'; return; }
@@ -1699,6 +1724,11 @@ async function authSubmitAction() {
   } else {
     const idf = $('authPseudo').value.trim();
     if (!idf || !pass) { msg.textContent = 'Renseigne ton identifiant et ton mot de passe.'; return; }
+    if (USE_PHP) {
+      try { const r = await apiAuth('login', { identifiant: idf, password: pass }); await finishLogin(r.user); }
+      catch (e) { msg.textContent = e.message; }
+      return;
+    }
     const users = await dbUsers();
     const user = users.find(u => u.pseudo.toLowerCase() === idf.toLowerCase() ||
                                  (u.email && u.email === idf.toLowerCase()));
@@ -1738,11 +1768,16 @@ async function ssoOkAction() {
   msg.textContent = '';
   const email = $('ssoEmail').value.trim().toLowerCase();
   if (!validEmail(email)) { msg.textContent = 'Adresse e-mail invalide.'; return; }
+  const name = cleanPseudo($('ssoName').value) || cleanPseudo(email.split('@')[0]);
+  if (name.length < 2) { msg.textContent = 'Choisis un nom affiché (2 caractères minimum).'; return; }
+  if (USE_PHP) {
+    try { const r = await apiAuth('ssoLogin', { provider: ssoProvider, email, pseudo: name }); await finishLogin(r.user); }
+    catch (e) { msg.textContent = e.message; }
+    return;
+  }
   const users = await dbUsers();
   let user = users.find(u => u.email === email && u.provider === ssoProvider);
   if (!user) {
-    const name = cleanPseudo($('ssoName').value) || cleanPseudo(email.split('@')[0]);
-    if (name.length < 2) { msg.textContent = 'Choisis un nom affiché (2 caractères minimum).'; return; }
     if (users.some(u => u.pseudo.toLowerCase() === name.toLowerCase())) { msg.textContent = 'Ce pseudo est déjà pris — choisis-en un autre.'; return; }
     if (users.some(u => u.email === email)) { msg.textContent = 'Cet e-mail est déjà associé à un compte ' + (users.find(u => u.email === email).provider) + '.'; return; }
     user = { id: uid(), pseudo: name, email, provider: ssoProvider, role: users.length === 0 ? 'admin' : 'user', createdAt: Date.now(), stats: { w:0, l:0, d:0 } };
@@ -1769,6 +1804,7 @@ $('authGuest').addEventListener('click', async () => {
 
 /* -------- Déconnexion -------- */
 $('btnLogout').addEventListener('click', async () => {
+  if (USE_PHP) { try { await apiAuth('logout'); } catch (e) { /* ignore */ } }
   pseudo = null;
   currentUser = null;
   await sset('session', { ts: Date.now() }, false);
@@ -1778,6 +1814,16 @@ $('btnLogout').addEventListener('click', async () => {
 
 /* -------- Session (reconnexion automatique) -------- */
 async function loadSession() {
+  if (USE_PHP) {
+    try {
+      const r = await apiAuth('me');
+      if (r.user) { currentUser = r.user; pseudo = r.user.pseudo; refreshProfileUI(); return; }
+    } catch (e) { /* non connecté côté serveur */ }
+    const g = await sget('session', false);            // invité éventuel (pseudo client)
+    if (g && g.guest && g.pseudo) pseudo = g.pseudo;
+    refreshProfileUI();
+    return;
+  }
   const sess = await sget('session', false);
   if (sess && sess.pseudo) {
     if (sess.guest) { pseudo = sess.pseudo; refreshProfileUI(); return; }
@@ -1791,20 +1837,27 @@ async function loadSession() {
   refreshProfileUI();
 }
 
-/* -------- Statistiques V/D/N enregistrées dans la base -------- */
+/* -------- Statistiques V/D/N -------- */
 async function recordResultOnce(R) {
   if (!currentUser || !R || R.status !== 'finished' || !R.result) return;
   const amWhite = R.white === pseudo, amBlack = R.black === pseudo;
   if (!amWhite && !amBlack) return;
+  const outcome = R.result === '1/2-1/2' ? 'd'
+    : ((R.result === '1-0' && amWhite) || (R.result === '0-1' && amBlack)) ? 'w' : 'l';
+  if (USE_PHP) {
+    try {
+      const r = await apiAuth('recordResult', { gameId: R.id, outcome });
+      if (r.stats) { currentUser.stats = r.stats; refreshProfileUI(); }
+    } catch (e) { /* best effort */ }
+    return;
+  }
   if (await sget('statrec:' + R.id, false)) return;   // déjà comptabilisé
   await sset('statrec:' + R.id, { done: 1 }, false);
   const users = await dbUsers();
   const u = users.find(x => x.id === currentUser.id);
   if (!u) return;
   u.stats = u.stats || { w:0, l:0, d:0 };
-  if (R.result === '1/2-1/2') u.stats.d++;
-  else if ((R.result === '1-0' && amWhite) || (R.result === '0-1' && amBlack)) u.stats.w++;
-  else u.stats.l++;
+  if (outcome === 'd') u.stats.d++; else if (outcome === 'w') u.stats.w++; else u.stats.l++;
   await dbSaveUsers(users);
   currentUser = u;
   refreshProfileUI();
@@ -1829,7 +1882,9 @@ $('btnExportDb').addEventListener('click', async () => {
 /* Présence : clé partagée unique, lecture-modification-écriture */
 async function heartbeat() {
   if (!pseudo || !HAS_STORAGE) return;
-  bannedCache = (await sget('db:banned')) || [];
+  bannedCache = USE_PHP
+    ? (await dbUsers()).filter(u => u.banned).map(u => u.pseudo)
+    : ((await sget('db:banned')) || []);
   const pres = (await sget('presence')) || {};
   pres[pseudo] = Date.now();
   for (const k of Object.keys(pres)) if (Date.now() - pres[k] > 180000) delete pres[k];
@@ -2604,14 +2659,30 @@ async function persistUsers(users, action) {
   refreshProfileUI();
   refreshAdmin();
 }
+/* Opération admin sur un compte via le serveur (mode PHP). */
+async function adminApply(targetId, op, action) {
+  try { await apiAuth('adminUpdate', { targetId, op }); }
+  catch (e) { alert(e.message); return; }
+  await adminLog(action);
+  if (currentUser && targetId === currentUser.id) {     // mon propre rôle a pu changer
+    try { const r = await apiAuth('me'); if (r.user) currentUser = r.user; } catch (e) { /* ignore */ }
+  }
+  refreshProfileUI();
+  refreshAdmin();
+}
 async function toggleBan(u) {
   if (currentUser && u.id === currentUser.id) { alert('Impossible de se suspendre soi-même.'); return; }
+  if (USE_PHP) return adminApply(u.id, u.banned ? 'unban' : 'ban', (u.banned ? 'Réactivation de ' : 'Suspension de ') + u.pseudo);
   const users = await dbUsers();
   const t = users.find(x => x.id === u.id); if (!t) return;
   t.banned = !t.banned;
   await persistUsers(users, (t.banned ? 'Suspension de ' : 'Réactivation de ') + t.pseudo);
 }
 async function toggleRole(u) {
+  if (USE_PHP) {
+    const op = u.role === 'admin' ? 'demote' : 'promote';
+    return adminApply(u.id, op, 'Rôle de ' + u.pseudo + ' → ' + (op === 'promote' ? 'admin' : 'user'));
+  }
   const users = await dbUsers();
   const t = users.find(x => x.id === u.id); if (!t) return;
   if (t.role === 'admin') {
@@ -2622,6 +2693,7 @@ async function toggleRole(u) {
   await persistUsers(users, 'Rôle de ' + t.pseudo + ' \u2192 ' + t.role);
 }
 async function adminResetStats(u) {
+  if (USE_PHP) return adminApply(u.id, 'resetstats', 'RAZ des statistiques de ' + u.pseudo);
   const users = await dbUsers();
   const t = users.find(x => x.id === u.id); if (!t) return;
   t.stats = { w:0, l:0, d:0 };
@@ -2631,6 +2703,7 @@ async function adminDeleteUser(u) {
   if (currentUser && u.id === currentUser.id) { alert('Impossible de supprimer son propre compte depuis l\u2019admin.'); return; }
   const ok = await askConfirm('Supprimer ' + u.pseudo + ' ?', 'Le compte sera retiré définitivement de la base JSON.');
   if (!ok) return;
+  if (USE_PHP) return adminApply(u.id, 'delete', 'Suppression du compte ' + u.pseudo);
   let users = await dbUsers();
   users = users.filter(x => x.id !== u.id);
   await persistUsers(users, 'Suppression du compte ' + u.pseudo);
@@ -3025,6 +3098,14 @@ function renderAdminLog(log) {
 /* -------- Revendication initiale du rôle admin -------- */
 $('adminClaim').addEventListener('click', async () => {
   if (!currentUser) return;
+  if (USE_PHP) {
+    try { const r = await apiAuth('claimAdmin'); if (r.user) currentUser = r.user; }
+    catch (e) { alert(e.message); return; }
+    await adminLog(pseudo + ' devient administrateur (initialisation)');
+    refreshProfileUI();
+    refreshAdmin();
+    return;
+  }
   const users = await dbUsers();
   if (users.some(u => u.role === 'admin')) { refreshAdmin(); return; }
   const me = users.find(x => x.id === currentUser.id);
