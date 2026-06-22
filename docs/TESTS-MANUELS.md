@@ -269,3 +269,53 @@ SELECT cle FROM le_cercle.kv_store WHERE scope='' AND (cle='db:tournaments' OR c
 ```
 - ✅ `db:tournaments` (index léger) et un `tournament:<id>` par tournoi.
 - ✅ Les `game:<id>` de tournoi portent `tournamentId`/`rondeId`/`matchIndex`.
+
+---
+
+## 9. Authentification serveur (`feat/auth-serveur`)
+
+En mode PHP (servi par WampServer), les comptes vivent dans la table SQL
+`users` ; le mot de passe est haché par `password_hash()` et **ne quitte jamais
+le serveur**. Mode artefact (`window.storage`) : ancienne auth client conservée.
+
+Prérequis : recharger le schéma (`sql/schema.sql`) pour créer `users` et
+`stat_records`.
+
+### 9.1 Inscription / connexion
+1. **Créer un compte** (1er compte) → ✅ connecté, **rôle ADMIN**, onglet ⚙ Admin visible.
+2. Recharger la page (F5) → ✅ **reconnexion automatique** (session PHP, action `me`).
+3. **Déconnexion** puis F5 → ✅ on reste déconnecté (session PHP détruite).
+4. Créer un 2ᵉ compte `Bob` (autre navigateur) → ✅ rôle utilisateur normal.
+5. Unicité : recréer le pseudo/e-mail d'un compte existant → ✅ message d'erreur.
+6. Mauvais mot de passe → ✅ « Mot de passe incorrect ».
+7. Vérification base (le hash n'est jamais exposé) :
+   ```
+   SELECT pseudo, role, LEFT(pass_hash,7) AS hash_prefixe, banned FROM le_cercle.users;
+   ```
+   - ✅ `pass_hash` commence par `$2y$`/`$argon` (password_hash) ; jamais dans `kv_store`.
+   - ✅ La requête `list` (réseau) ne renvoie **aucun** champ hash.
+
+### 9.2 Migration des anciens comptes (si `db:users` existait)
+1. Avec des comptes créés *avant* (base JSON `db:users`), recharger l'app puis se connecter
+   avec un ancien identifiant + mot de passe.
+   - ✅ La connexion réussit (vérification du hachage *legacy*).
+   - ✅ En base, ce compte a désormais un `pass_hash` moderne et `legacy_hash` = NULL
+     (ré-hachage transparent). Marqueur `auth:migrated` présent dans `kv_store`.
+
+### 9.3 Administration (sécurité côté serveur)
+1. Admin : **Suspendre** `Bob` → ✅ `Bob` ne peut plus se connecter (« compte suspendu »).
+2. **Promouvoir** puis **Rétrograder** `Bob` ; tenter de rétrograder le **dernier** admin
+   → ✅ refusé côté serveur.
+3. **RAZ stats**, **Supprimer** un compte → ✅ pris en compte (table `users`).
+4. Contrôle d'accès : appeler `adminUpdate` sans session admin (ex. via la console)
+   → ✅ **HTTP 403** (la garde est côté serveur, pas seulement dans l'UI).
+
+### 9.4 Statistiques
+1. Jouer et terminer une partie en ligne entre deux comptes.
+   - ✅ Les compteurs V/D/N du profil augmentent (action serveur `recordResult`).
+   - ✅ Rejouer/recharger ne double pas le décompte (table `stat_records`).
+
+> Limites connues (hors périmètre de cette étape) : « Réinitialiser toute la
+> plateforme » ne vide pas la table `users` en mode PHP (les comptes se gèrent
+> via la section Utilisateurs) ; l'authenticité du résultat envoyé à
+> `recordResult` reste déclarative (anti-triche non couvert par le prototype).
