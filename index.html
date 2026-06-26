@@ -3120,7 +3120,9 @@ async function lancerTournoi(id) {
   if (T.participants.length < 2) { alert('Au moins 2 joueurs inscrits sont nécessaires.'); return; }
   const list = await loadTournaments();
   if (list.some(x => x.statut === 'en-cours' && x.id !== id)) { alert('Un autre tournoi est déjà en cours (un seul à la fois).'); return; }
-  T.rondes = genererRoundRobin(T.participants);
+  if (T.format === 'elimination') T.rondes = genererElimination(T.participants);
+  else if (T.format === 'suisse') { T.rondes = []; T.rondes.push(apparierSuisse(T)); }
+  else T.rondes = genererRoundRobin(T.participants);
   T.statut = 'en-cours'; T.inscriptionsOuvertes = false; T.rondeCourante = 1; T.debutLe = Date.now();
   await creerPartiesRonde(T, 1);
   T.classement = calculerClassement(T);
@@ -3130,14 +3132,34 @@ async function lancerTournoi(id) {
 }
 async function rondeSuivante(id) {
   const T = await getTournament(id); if (!T || T.statut !== 'en-cours') return;
-  if (T.rondeCourante >= T.rondes.length) { alert('Dernière ronde atteinte — clôturez le tournoi.'); return; }
   const courante = T.rondes.find(r => r.numero === T.rondeCourante);
-  if (courante && courante.matchs.some(m => !m.resultat)) {
-    const ok = await askConfirm('Ronde incomplète', 'Des résultats manquent à la ronde ' + T.rondeCourante + '. Passer quand même à la suivante ?');
-    if (!ok) return;
+
+  if (T.format === 'round-robin') {
+    if (T.rondeCourante >= T.rondes.length) { alert('Dernière ronde atteinte — clôturez le tournoi.'); return; }
+    if (courante && courante.matchs.some(m => !m.resultat)) {
+      const ok = await askConfirm('Ronde incomplète', 'Des résultats manquent à la ronde ' + T.rondeCourante + '. Passer quand même à la suivante ?');
+      if (!ok) return;
+    }
+    T.rondeCourante++;
+  } else {
+    // élimination / suisse : la ronde courante doit être complète
+    if (courante && courante.matchs.some(m => !m.resultat)) { alert('Complète tous les résultats de la ronde avant de générer la suivante.'); return; }
+    let nouvelle;
+    if (T.format === 'elimination') {
+      const res = rondeEliminationSuivante(T);
+      if (res.erreur === 'nulle') { alert('Élimination : un match est nul. Saisis un résultat décisif (départage) avant de continuer.'); return; }
+      if (res.fini) { alert('Il ne reste qu’un joueur : le tournoi est terminé, clôture-le.'); return; }
+      nouvelle = res.ronde;
+    } else {                       // suisse
+      if (T.rondeCourante >= (T.nbRondes || 0)) { alert('Nombre de rondes du suisse atteint — clôture le tournoi.'); return; }
+      nouvelle = apparierSuisse(T);
+    }
+    T.rondes.push(nouvelle);
+    T.rondeCourante = nouvelle.numero;
   }
-  T.rondeCourante++;
+
   await creerPartiesRonde(T, T.rondeCourante);
+  T.classement = calculerClassement(T);
   await saveTournament(T);
   await adminLog('Tournoi « ' + T.nom + ' » : passage à la ronde ' + T.rondeCourante);
   renderAdminTournois();
