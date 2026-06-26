@@ -7,8 +7,9 @@ api/config.php
 # Fichiers de travail / brouillons non versionnés
 index___.html
 
-# Fichiers système / éditeurs
+# Fichiers système / éditeurs / outils
 Thumbs.db
 .DS_Store
 .vscode/
 .idea/
+.claude/
