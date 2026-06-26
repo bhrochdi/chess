@@ -2492,13 +2492,102 @@ function genererRoundRobin(participants) {
   return rondes;
 }
 
+/* -------- Élimination directe (arbre) --------
+   Têtes de série par ordre d'inscription ; byes pour compléter à la puissance
+   de 2 supérieure (le bye donne une victoire immédiate). Renvoie la ronde 1. */
+function ordreBracket(size) {
+  let a = [1];
+  while (a.length < size) {
+    const m = a.length * 2 + 1;
+    const b = [];
+    for (const x of a) { b.push(x); b.push(m - x); }
+    a = b;
+  }
+  return a.map(x => x - 1);              // indices de tête de série, 0-based
+}
+function genererElimination(participants) {
+  let size = 1; while (size < participants.length) size *= 2;
+  const seeds = participants.slice();
+  while (seeds.length < size) seeds.push(null);   // byes
+  const ordre = ordreBracket(size);
+  const matchs = [];
+  for (let i = 0; i < size; i += 2) {
+    const blanc = seeds[ordre[i]], noir = seeds[ordre[i + 1]];
+    const m = { blanc, noir, gameId: null, resultat: null };
+    if (blanc && !noir) m.resultat = '1-0';        // bye
+    else if (noir && !blanc) m.resultat = '0-1';
+    matchs.push(m);
+  }
+  return [{ numero: 1, matchs }];
+}
+function vainqueurMatch(m) {
+  if (m.resultat === '1-0') return m.blanc;
+  if (m.resultat === '0-1') return m.noir;
+  if (m.blanc && !m.noir) return m.blanc;          // bye
+  if (m.noir && !m.blanc) return m.noir;
+  return null;                                     // nulle ou non joué
+}
+/* Construit la ronde suivante d'un arbre à élimination à partir des vainqueurs. */
+function rondeEliminationSuivante(T) {
+  const courante = T.rondes.find(r => r.numero === T.rondeCourante);
+  const vainqueurs = courante.matchs.map(vainqueurMatch);
+  if (vainqueurs.some(v => !v)) return { erreur: 'nulle' };   // départage requis
+  if (vainqueurs.length === 1) return { fini: true };
+  const matchs = [];
+  for (let i = 0; i < vainqueurs.length; i += 2)
+    matchs.push({ blanc: vainqueurs[i], noir: vainqueurs[i + 1], gameId: null, resultat: null });
+  return { ronde: { numero: T.rondeCourante + 1, matchs } };
+}
+
+/* -------- Système suisse --------
+   Appariement de la ronde suivante par score, sans rematch ; bye (1 pt) si
+   nombre impair, attribué au joueur le moins bien classé sans bye antérieur. */
+function aEuBye(T, pseudo) {
+  for (const r of T.rondes) for (const m of r.matchs)
+    if ((m.blanc === pseudo && !m.noir) || (m.noir === pseudo && !m.blanc)) return true;
+  return false;
+}
+function apparierSuisse(T) {
+  let joueurs = calculerClassement(T).map(c => c.pseudo);
+  const dejaJoue = new Set();
+  for (const r of T.rondes) for (const m of r.matchs)
+    if (m.blanc && m.noir) { dejaJoue.add(m.blanc + '|' + m.noir); dejaJoue.add(m.noir + '|' + m.blanc); }
+  let bye = null;
+  if (joueurs.length % 2 === 1) {
+    for (let i = joueurs.length - 1; i >= 0; i--) if (!aEuBye(T, joueurs[i])) { bye = joueurs[i]; break; }
+    if (!bye) bye = joueurs[joueurs.length - 1];
+    joueurs = joueurs.filter(p => p !== bye);
+  }
+  const matchs = [];
+  const used = new Set();
+  for (let i = 0; i < joueurs.length; i++) {
+    if (used.has(joueurs[i])) continue;
+    let adv = null;
+    for (let j = i + 1; j < joueurs.length; j++)
+      if (!used.has(joueurs[j]) && !dejaJoue.has(joueurs[i] + '|' + joueurs[j])) { adv = joueurs[j]; break; }
+    if (!adv) for (let j = i + 1; j < joueurs.length; j++)   // forcé : rematch toléré en dernier recours
+      if (!used.has(joueurs[j])) { adv = joueurs[j]; break; }
+    if (!adv) break;
+    used.add(joueurs[i]); used.add(adv);
+    matchs.push({ blanc: joueurs[i], noir: adv, gameId: null, resultat: null });
+  }
+  if (bye) matchs.push({ blanc: bye, noir: null, gameId: null, resultat: '1-0' });
+  const dernier = T.rondes.length ? T.rondes[T.rondes.length - 1].numero : 0;
+  return { numero: dernier + 1, matchs };
+}
+
 /* -------- Barème et classement --------
-   Victoire 1, nulle 0,5, défaite 0. Tri : points, puis victoires, puis pseudo. */
+   Victoire 1, nulle 0,5, défaite 0 ; bye = 1 (victoire). Tri : points, puis
+   victoires, puis pseudo. Pour l'élimination, le total de victoires ordonne
+   naturellement les joueurs par progression dans l'arbre. */
 function calculerClassement(T) {
   const stats = {};
   for (const p of T.participants) stats[p] = { pseudo: p, points: 0, joues: 0, victoires: 0 };
   for (const ronde of T.rondes) for (const m of ronde.matchs) {
-    if (!m.resultat || !stats[m.blanc] || !stats[m.noir]) continue;
+    if (!m.resultat) continue;
+    if (m.blanc && !m.noir) { if (stats[m.blanc]) { stats[m.blanc].points += 1; stats[m.blanc].joues++; stats[m.blanc].victoires++; } continue; }  // bye
+    if (m.noir && !m.blanc) { if (stats[m.noir]) { stats[m.noir].points += 1; stats[m.noir].joues++; stats[m.noir].victoires++; } continue; }
+    if (!stats[m.blanc] || !stats[m.noir]) continue;
     stats[m.blanc].joues++; stats[m.noir].joues++;
     if (m.resultat === '1-0') { stats[m.blanc].points += 1; stats[m.blanc].victoires++; }
     else if (m.resultat === '0-1') { stats[m.noir].points += 1; stats[m.noir].victoires++; }
@@ -2517,7 +2606,7 @@ async function creerPartiesRonde(T, numeroRonde) {
   if (!ronde) return;
   for (let mi = 0; mi < ronde.matchs.length; mi++) {
     const m = ronde.matchs[mi];
-    if (m.gameId) continue;
+    if (m.gameId || m.resultat || !m.blanc || !m.noir) continue;   // déjà créé, ou bye
     const id = 'g' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
     const R = {
       id, status: 'playing', tc: T.cadence,
