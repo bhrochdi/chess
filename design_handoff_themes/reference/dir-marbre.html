@@ -1,0 +1,134 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<title>Marbre & laiton</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@500;600;700&family=Jost:wght@300;400;500;600&display=swap');
+* { margin:0; padding:0; box-sizing:border-box; }
+:root{
+  --bg:#eceae4; --card:#f7f5ef; --ink:#2a2620; --dim:#7a7468; --faint:#a8a294;
+  --line:#ddd8cc; --brass:#a8863f; --brass-d:#86692c; --brass-bright:#c9a85a;
+  --sqL:#efece2; --sqD:#c9b49a;
+}
+.s{ width:1180px; min-height:940px; color:var(--ink); font-family:'Jost',sans-serif; padding:36px 46px 42px;
+  -webkit-font-smoothing:antialiased; position:relative; overflow:hidden;
+  background:
+    radial-gradient(130% 90% at 50% -10%, #f6f4ee, var(--bg) 60%),
+    var(--bg);
+}
+.s::before{ content:''; position:absolute; inset:0; pointer-events:none; opacity:.5; mix-blend-mode:multiply;
+  background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='420' height='420'%3E%3Cfilter id='m'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.006 .009' numOctaves='4' seed='7'/%3E%3CfeColorMatrix values='0 0 0 0 .76 0 0 0 0 .73 0 0 0 0 .66 0 0 0 .05 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23m)'/%3E%3C/svg%3E"); }
+.s>*{ position:relative; }
+.top{ display:flex; align-items:center; justify-content:space-between; margin-bottom:14px; }
+.brand{ display:flex; align-items:center; gap:14px; }
+.brand .em{ width:44px; height:44px; border-radius:50%; display:grid; place-items:center; font-size:22px;
+  color:var(--brass-d); border:1px solid var(--brass); background:#f7f5ef;
+  box-shadow:inset 0 0 0 3px #f7f5ef, inset 0 0 0 4px rgba(168,134,63,.3); }
+.brand .wm{ font-family:'Cormorant Garamond',serif; font-size:25px; font-weight:600; letter-spacing:.22em; text-transform:uppercase; }
+.brand .wm em{ font-style:normal; color:var(--brass-d); }
+.status{ display:flex; align-items:center; gap:10px; font-family:'Cormorant Garamond',serif; font-size:21px; color:var(--ink); }
+.status .d{ width:12px; height:12px; border-radius:50%; background:#fff; border:1px solid var(--brass); }
+.pill{ font-size:11px; letter-spacing:.18em; text-transform:uppercase; color:var(--brass-d);
+  border:1px solid var(--brass); padding:7px 15px; border-radius:2px; }
+.frieze{ height:1px; background:linear-gradient(90deg,transparent,var(--brass),transparent); margin:0 0 26px; position:relative; }
+.frieze::after{ content:'✦'; position:absolute; left:50%; top:50%; transform:translate(-50%,-50%); color:var(--brass); font-size:11px; background:var(--bg); padding:0 10px; }
+.lay{ display:grid; grid-template-columns:auto 1fr; gap:32px; align-items:start; }
+.bcol{ display:flex; flex-direction:column; gap:14px; }
+.seat{ display:flex; align-items:center; gap:13px; }
+.seat .av{ width:44px; height:44px; border-radius:50%; display:grid; place-items:center;
+  font-family:'Cormorant Garamond',serif; font-size:19px; font-weight:600; border:1px solid var(--brass); }
+.seat .av.b{ background:#2a2620; color:var(--brass-bright); } .seat .av.w{ background:#fff; color:var(--ink); }
+.seat .who{ flex:1; } .seat .who .n{ font-family:'Cormorant Garamond',serif; font-size:18px; font-weight:600; }
+.seat .who .r{ font-size:12px; color:var(--dim); letter-spacing:.05em; }
+.clock{ font-variant-numeric:tabular-nums; font-size:24px; font-weight:400; letter-spacing:.02em;
+  background:#fff; border:1px solid var(--line); border-radius:3px; padding:8px 18px; color:var(--dim); }
+.clock.run{ border-color:var(--brass); color:var(--brass-d); box-shadow:0 0 0 1px var(--brass), 0 8px 20px rgba(168,134,63,.18); }
+.shell{ padding:14px; background:linear-gradient(145deg,#cdae6a,#9c7e3c); border-radius:7px;
+  box-shadow:0 22px 50px rgba(60,48,20,.3), inset 0 1px 0 rgba(255,255,255,.5); }
+.board{ display:grid; grid-template-columns:repeat(8,60px); grid-template-rows:repeat(8,60px);
+  border:2px solid #6f5824; border-radius:2px; }
+.sq{ display:grid; place-items:center; font-size:45px; line-height:1; position:relative; }
+.sq.l{ background:var(--sqL); } .sq.d{ background:var(--sqD); }
+.sq::after{ content:''; position:absolute; inset:0; opacity:.6; pointer-events:none; mix-blend-mode:multiply;
+  background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120'%3E%3Cfilter id='v'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.008 .03' numOctaves='3'/%3E%3CfeColorMatrix values='0 0 0 0 .6 0 0 0 0 .55 0 0 0 0 .45 0 0 0 .04 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23v)'/%3E%3C/svg%3E"); }
+.sq .pw{ color:#fbf8f0; filter:drop-shadow(0 2px 2px rgba(80,60,20,.3)); z-index:1; }
+.sq .pb{ color:#37312a; z-index:1; text-shadow:0 1px 0 rgba(255,255,255,.25); }
+.sq.last{ box-shadow:inset 0 0 0 3px rgba(168,134,63,.65); }
+.coord{ display:flex; justify-content:space-between; padding:8px 8px 0; font-size:11px; color:var(--brass-d); letter-spacing:.1em; text-transform:uppercase; }
+.side{ display:flex; flex-direction:column; gap:18px; }
+.card{ background:var(--card); border:1px solid var(--line); border-radius:5px; padding:18px 20px;
+  box-shadow:0 8px 24px rgba(80,68,40,.08); }
+.card h3{ font-family:'Cormorant Garamond',serif; font-size:15px; letter-spacing:.16em; text-transform:uppercase;
+  color:var(--brass-d); font-weight:600; border-bottom:1px solid var(--line); padding-bottom:9px; margin-bottom:12px; }
+.moves{ display:grid; grid-template-columns:1.8em 1fr 1fr; gap:4px 12px; font-size:15px; font-variant-numeric:tabular-nums; }
+.moves .nu{ color:var(--faint); text-align:right; } .moves .p{ padding:1px 6px; border-radius:2px; }
+.moves .p.on{ background:rgba(168,134,63,.22); color:var(--brass-d); }
+.act{ display:grid; grid-template-columns:1fr 1fr; gap:10px; }
+.btn{ font-family:'Jost',sans-serif; font-size:12px; letter-spacing:.12em; text-transform:uppercase; font-weight:500;
+  padding:13px; border-radius:3px; cursor:pointer; border:1px solid var(--line); background:#fff; color:var(--ink); }
+.btn.g{ grid-column:1/-1; border:1px solid var(--brass-d); color:#2a2007;
+  background:linear-gradient(180deg,var(--brass-bright),var(--brass)); font-weight:600;
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.5); }
+.btn.warn{ color:#9a4b3a; border-color:#e0c8c0; }
+.chat .m{ font-size:14px; margin-bottom:9px; line-height:1.45; } .chat .m .f{ font-weight:600; color:var(--brass-d); }
+.chat .m .f.me{ color:var(--ink); } .chat .m.sys{ color:var(--faint); font-style:italic; font-size:13px; }
+.cin{ display:flex; gap:8px; margin-top:6px; }
+.cin input{ flex:1; font-family:inherit; font-size:14px; padding:11px 13px; border-radius:3px; border:1px solid var(--line); background:#fff; }
+.cin button{ width:44px; border-radius:3px; border:1px solid var(--brass-d); background:linear-gradient(180deg,var(--brass-bright),var(--brass)); color:#2a2007; font-size:15px; cursor:pointer; }
+</style>
+</head>
+<body>
+<div class="s" data-screen-label="Marbre & laiton">
+  <div class="top">
+    <div class="brand"><div class="em">♞</div><div class="wm">Le&nbsp;<em>Cercle</em></div></div>
+    <div class="status"><span class="d"></span>Aux blancs de jouer</div>
+    <div class="pill">10 + 5 · classée</div>
+  </div>
+  <div class="frieze"></div>
+  <div class="lay">
+    <div class="bcol">
+      <div class="seat"><div class="av b">I</div><div class="who"><div class="n">l'Inconnu</div><div class="r">1924 · Suisse</div></div><div class="clock">06:14</div></div>
+      <div class="shell">
+        <div class="board" id="b"></div>
+        <div class="coord"><span>a</span><span>b</span><span>c</span><span>d</span><span>e</span><span>f</span><span>g</span><span>h</span></div>
+      </div>
+      <div class="seat"><div class="av w">A</div><div class="who"><div class="n">Augustin V. <span style="color:var(--faint);font-weight:400">(vous)</span></div><div class="r">1742 · France</div></div><div class="clock run">07:42</div></div>
+    </div>
+    <div class="side">
+      <div class="card"><h3>Feuille de partie</h3>
+        <div class="moves">
+          <span class="nu">1</span><span class="p">e4</span><span class="p">c5</span>
+          <span class="nu">2</span><span class="p">Cf3</span><span class="p">d6</span>
+          <span class="nu">3</span><span class="p">d4</span><span class="p">cxd4</span>
+          <span class="nu">4</span><span class="p">Cxd4</span><span class="p">Cf6</span>
+          <span class="nu">5</span><span class="p">Cc3</span><span class="p">a6</span>
+          <span class="nu">6</span><span class="p">Fe2</span><span class="p">e5</span>
+          <span class="nu">7</span><span class="p">Cb3</span><span class="p on">Fe7</span>
+        </div>
+      </div>
+      <div class="card chat"><h3>À la table</h3>
+        <div class="m sys">Partie commencée · 10 + 5</div>
+        <div class="m"><span class="f">l'Inconnu</span> · Belle ouverture, à l'ancienne.</div>
+        <div class="m"><span class="f me">Vous</span> · On verra qui tient la finale.</div>
+        <div class="cin"><input placeholder="Écrire un mot…"><button>➤</button></div>
+      </div>
+      <div class="act">
+        <button class="btn">Nulle</button>
+        <button class="btn warn">Abandon</button>
+        <button class="btn g">Proposer une revanche</button>
+      </div>
+    </div>
+  </div>
+</div>
+<script>
+const FEN="r1bqk2r/1p2bppp/p2p1n2/4p3/4P3/1NN5/PPP1BPPP/R1BQK2R";
+const G={K:'♔',Q:'♕',R:'♖',B:'♗',N:'♘',P:'♙',k:'♚',q:'♛',r:'♜',b:'♝',n:'♞',p:'♟'};
+const bd=document.getElementById('b'); const rows=FEN.split('/');
+for(let r=0;r<8;r++){let f=0;for(const c of rows[r]){if(/\d/.test(c)){for(let k=0;k<+c;k++){add(r,f);f++;}}else{add(r,f,c);f++;}}}
+function add(r,f,p){const s=document.createElement('div');s.className='sq '+((r+f)%2===0?'l':'d');
+  if(p){const w=p===p.toUpperCase();s.innerHTML='<span class="'+(w?'pw':'pb')+'">'+G[p]+'</span>';}bd.appendChild(s);}
+const c=bd.children; c[0*8+5].classList.add('last'); c[1*8+4].classList.add('last');
+</script>
+</body>
+</html>

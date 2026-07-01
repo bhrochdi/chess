@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<title>Clair</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@400;500;600;700&family=Newsreader:ital,opsz,wght@0,6..72,500;0,6..72,600;1,6..72,500&display=swap');
+* { margin:0; padding:0; box-sizing:border-box; }
+:root{
+  --bg:#f3f1ec; --card:#ffffff; --ink:#22251f; --dim:#6b6f64; --faint:#a4a89c;
+  --line:#e4e1d8; --accent:#5b7a4f; --accent-d:#456038; --accent-soft:#e7eee2;
+  --sqL:#eceae2; --sqD:#9fb08f; --gold:#5b7a4f;
+}
+.s{ width:1180px; min-height:940px; background:var(--bg); color:var(--ink);
+  font-family:'Hanken Grotesk',sans-serif; padding:34px 44px 40px; -webkit-font-smoothing:antialiased; }
+.top{ display:flex; align-items:center; justify-content:space-between; margin-bottom:30px; }
+.brand{ display:flex; align-items:center; gap:13px; }
+.brand .em{ width:40px; height:40px; border-radius:11px; background:var(--ink); color:#fff;
+  display:grid; place-items:center; font-size:22px; }
+.brand .wm{ font-family:'Newsreader',serif; font-size:21px; letter-spacing:.02em; font-weight:600; }
+.brand .wm em{ font-style:normal; color:var(--accent-d); }
+.status{ display:flex; align-items:center; gap:10px; font-size:15px; color:var(--dim); font-weight:500; }
+.status .d{ width:11px; height:11px; border-radius:50%; background:#fff; border:1px solid #cfd3c6; box-shadow:0 1px 2px rgba(0,0,0,.08); }
+.pill{ font-size:13px; color:var(--dim); background:var(--card); border:1px solid var(--line);
+  padding:8px 15px; border-radius:99px; font-weight:500; }
+.lay{ display:grid; grid-template-columns:auto 1fr; gap:30px; align-items:start; }
+.bcol{ display:flex; flex-direction:column; gap:14px; }
+.seat{ display:flex; align-items:center; gap:13px; }
+.seat .av{ width:42px; height:42px; border-radius:12px; display:grid; place-items:center;
+  font-family:'Newsreader',serif; font-size:18px; font-weight:600; }
+.seat .av.b{ background:var(--ink); color:#fff; } .seat .av.w{ background:#fff; color:var(--ink); border:1px solid var(--line); }
+.seat .who{ flex:1; } .seat .who .n{ font-size:15.5px; font-weight:600; } .seat .who .r{ font-size:13px; color:var(--dim); }
+.clock{ font-variant-numeric:tabular-nums; font-size:25px; font-weight:600; letter-spacing:.01em;
+  background:var(--card); border:1px solid var(--line); border-radius:13px; padding:7px 18px; color:var(--dim); }
+.clock.run{ background:var(--accent); color:#fff; border-color:var(--accent); box-shadow:0 6px 18px rgba(91,122,79,.3); }
+.board{ display:grid; grid-template-columns:repeat(8,62px); grid-template-rows:repeat(8,62px);
+  border-radius:16px; overflow:hidden; box-shadow:0 20px 50px rgba(40,45,35,.16); }
+.sq{ display:grid; place-items:center; font-size:46px; line-height:1; position:relative; }
+.sq.l{ background:var(--sqL); } .sq.d{ background:var(--sqD); }
+.sq .pw{ color:#fcfcfa; filter:drop-shadow(0 2px 2px rgba(0,0,0,.22)); }
+.sq .pb{ color:#33372c; }
+.sq.last::after{ content:''; position:absolute; inset:0; background:rgba(91,122,79,.26); }
+.sq.sel::after{ content:''; position:absolute; inset:0; box-shadow:inset 0 0 0 4px var(--accent); }
+.sq.dot::before{ content:''; position:absolute; width:30%; height:30%; border-radius:50%; background:rgba(60,70,50,.22); z-index:1; }
+.coord{ display:flex; justify-content:space-between; padding:0 6px; font-size:12px; color:var(--faint); font-weight:600; letter-spacing:.1em; }
+.side{ display:flex; flex-direction:column; gap:16px; }
+.card{ background:var(--card); border:1px solid var(--line); border-radius:16px; padding:18px 20px; }
+.card h3{ font-size:11px; letter-spacing:.14em; text-transform:uppercase; color:var(--faint); font-weight:600; margin-bottom:14px; }
+.moves{ display:grid; grid-template-columns:1.8em 1fr 1fr; gap:4px 10px; font-size:14.5px; font-variant-numeric:tabular-nums; }
+.moves .nu{ color:var(--faint); text-align:right; } .moves .p{ padding:2px 7px; border-radius:7px; font-weight:500; }
+.moves .p.on{ background:var(--accent-soft); color:var(--accent-d); }
+.act{ display:grid; grid-template-columns:1fr 1fr; gap:10px; }
+.btn{ font-family:inherit; font-size:14px; font-weight:600; padding:13px; border-radius:12px; cursor:pointer; border:1px solid var(--line); background:#fff; color:var(--ink); }
+.btn.g{ background:var(--accent); color:#fff; border-color:var(--accent); grid-column:1/-1; }
+.btn.warn{ color:#a8503f; border-color:#e6cfc8; background:#fbf3f1; }
+.chat .m{ font-size:14px; margin-bottom:9px; line-height:1.45; } .chat .m .f{ font-weight:700; color:var(--accent-d); }
+.chat .m .f.me{ color:var(--ink); } .chat .m.sys{ color:var(--faint); font-style:italic; font-size:13px; }
+.cin{ display:flex; gap:8px; margin-top:6px; }
+.cin input{ flex:1; font-family:inherit; font-size:14px; padding:11px 13px; border-radius:11px; border:1px solid var(--line); background:var(--bg); }
+.cin button{ width:44px; border-radius:11px; border:none; background:var(--accent); color:#fff; font-size:16px; cursor:pointer; }
+.tag{ font-size:12px; color:var(--accent-d); background:var(--accent-soft); padding:3px 10px; border-radius:99px; font-weight:600; }
+</style>
+</head>
+<body>
+<div class="s" data-screen-label="Clair">
+  <div class="top">
+    <div class="brand"><div class="em">♞</div><div class="wm">Le&nbsp;<em>Cercle</em></div></div>
+    <div class="status"><span class="d"></span>Aux blancs de jouer</div>
+    <div class="pill">10 + 5 · classée</div>
+  </div>
+  <div class="lay">
+    <div class="bcol">
+      <div class="seat"><div class="av b">I</div><div class="who"><div class="n">l'Inconnu</div><div class="r">1924</div></div><div class="clock">06:14</div></div>
+      <div>
+        <div class="board" id="b"></div>
+        <div class="coord"><span>a</span><span>b</span><span>c</span><span>d</span><span>e</span><span>f</span><span>g</span><span>h</span></div>
+      </div>
+      <div class="seat"><div class="av w">A</div><div class="who"><div class="n">Augustin V. <span style="color:var(--faint);font-weight:400">vous</span></div><div class="r">1742</div></div><div class="clock run">07:42</div></div>
+    </div>
+    <div class="side">
+      <div class="card"><h3>Notation</h3>
+        <div class="moves">
+          <span class="nu">1</span><span class="p">e4</span><span class="p">c5</span>
+          <span class="nu">2</span><span class="p">Cf3</span><span class="p">d6</span>
+          <span class="nu">3</span><span class="p">d4</span><span class="p">cxd4</span>
+          <span class="nu">4</span><span class="p">Cxd4</span><span class="p">Cf6</span>
+          <span class="nu">5</span><span class="p">Cc3</span><span class="p">a6</span>
+          <span class="nu">6</span><span class="p">Fe2</span><span class="p">e5</span>
+          <span class="nu">7</span><span class="p">Cb3</span><span class="p on">Fe7</span>
+        </div>
+      </div>
+      <div class="card chat"><h3>À la table</h3>
+        <div class="m sys">Partie commencée · 10 + 5</div>
+        <div class="m"><span class="f">l'Inconnu</span> · La Najdorf, du classique.</div>
+        <div class="m"><span class="f me">Vous</span> · On verra la finale.</div>
+        <div class="cin"><input placeholder="Écrire un mot…"><button>➤</button></div>
+      </div>
+      <div class="act">
+        <button class="btn">Nulle</button>
+        <button class="btn warn">Abandon</button>
+        <button class="btn g">Proposer une revanche</button>
+      </div>
+    </div>
+  </div>
+</div>
+<script>
+const FEN="r1bqk2r/1p2bppp/p2p1n2/4p3/4P3/1NN5/PPP1BPPP/R1BQK2R";
+const G={K:'♔',Q:'♕',R:'♖',B:'♗',N:'♘',P:'♙',k:'♚',q:'♛',r:'♜',b:'♝',n:'♞',p:'♟'};
+const bd=document.getElementById('b'); const rows=FEN.split('/');
+for(let r=0;r<8;r++){let f=0;for(const c of rows[r]){if(/\d/.test(c)){for(let k=0;k<+c;k++){add(r,f);f++;}}else{add(r,f,c);f++;}}}
+function add(r,f,p){const s=document.createElement('div');s.className='sq '+((r+f)%2===0?'l':'d');
+  if(p){const w=p===p.toUpperCase();s.innerHTML='<span class="'+(w?'pw':'pb')+'">'+G[p]+'</span>';}bd.appendChild(s);}
+const c=bd.children; c[0*8+5].classList.add('last'); c[1*8+4].classList.add('last');
+</script>
+</body>
+</html>

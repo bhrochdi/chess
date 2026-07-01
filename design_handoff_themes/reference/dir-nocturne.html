@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<title>Nocturne</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@500;600&display=swap');
+* { margin:0; padding:0; box-sizing:border-box; }
+:root{
+  --bg:#0a0b10; --bg2:#0e1018; --card:#13161f; --ink:#e8ebf2; --dim:#8a8fa3; --faint:#565d72;
+  --line:#242838; --neon:#46e6c8; --neon-d:#2bb79e; --violet:#9b7bff; --pink:#ff6ba8;
+  --sqL:#2a3042; --sqD:#171b27;
+}
+.s{ width:1180px; min-height:940px; color:var(--ink); font-family:'Space Grotesk',sans-serif; padding:34px 44px 40px;
+  -webkit-font-smoothing:antialiased; position:relative; overflow:hidden;
+  background:
+    radial-gradient(80% 60% at 15% 0%, rgba(155,123,255,.12), transparent 60%),
+    radial-gradient(70% 60% at 100% 30%, rgba(70,230,200,.1), transparent 55%),
+    var(--bg); }
+.top{ display:flex; align-items:center; justify-content:space-between; margin-bottom:28px; }
+.brand{ display:flex; align-items:center; gap:13px; }
+.brand .em{ width:42px; height:42px; border-radius:12px; display:grid; place-items:center; font-size:21px;
+  background:linear-gradient(150deg,#1a1f2e,#0e1018); color:var(--neon); border:1px solid var(--line);
+  box-shadow:0 0 18px rgba(70,230,200,.25), inset 0 0 0 1px rgba(70,230,200,.15); }
+.brand .wm{ font-size:20px; font-weight:700; letter-spacing:.04em; }
+.brand .wm em{ font-style:normal; color:var(--neon); }
+.status{ display:flex; align-items:center; gap:10px; font-size:15px; font-weight:500; color:var(--dim); }
+.status .d{ width:10px; height:10px; border-radius:50%; background:#fff; box-shadow:0 0 10px #fff; }
+.pill{ font-size:12px; font-weight:600; letter-spacing:.06em; color:var(--neon); background:rgba(70,230,200,.08);
+  border:1px solid rgba(70,230,200,.3); padding:7px 14px; border-radius:99px; font-family:'JetBrains Mono',monospace; }
+.lay{ display:grid; grid-template-columns:auto 1fr; gap:30px; align-items:start; }
+.bcol{ display:flex; flex-direction:column; gap:14px; }
+.seat{ display:flex; align-items:center; gap:13px; }
+.seat .av{ width:42px; height:42px; border-radius:12px; display:grid; place-items:center; font-size:18px; font-weight:700;
+  border:1px solid var(--line); } .seat .av.b{ background:#171b27; color:var(--violet); } .seat .av.w{ background:#e8ebf2; color:#13161f; }
+.seat .who{ flex:1; } .seat .who .n{ font-size:15.5px; font-weight:600; } .seat .who .r{ font-size:13px; color:var(--dim); font-family:'JetBrains Mono',monospace; }
+.clock{ font-family:'JetBrains Mono',monospace; font-size:25px; font-weight:600; letter-spacing:.02em;
+  background:var(--card); border:1px solid var(--line); border-radius:12px; padding:8px 18px; color:var(--dim); }
+.clock.run{ color:#06241e; background:linear-gradient(180deg,var(--neon),var(--neon-d)); border-color:var(--neon);
+  box-shadow:0 0 24px rgba(70,230,200,.45); }
+.shell{ padding:12px; background:var(--card); border:1px solid var(--line); border-radius:18px;
+  box-shadow:0 24px 60px rgba(0,0,0,.5), 0 0 0 1px rgba(155,123,255,.06); }
+.board{ display:grid; grid-template-columns:repeat(8,60px); grid-template-rows:repeat(8,60px);
+  border-radius:10px; overflow:hidden; }
+.sq{ display:grid; place-items:center; font-size:45px; line-height:1; position:relative; }
+.sq.l{ background:var(--sqL); } .sq.d{ background:var(--sqD); }
+.sq .pw{ color:#f4f6fb; filter:drop-shadow(0 2px 4px rgba(0,0,0,.5)); z-index:1; }
+.sq .pb{ color:#0a0b10; filter:drop-shadow(0 1px 0 rgba(255,255,255,.12)); z-index:1; }
+.sq.last::after{ content:''; position:absolute; inset:0; background:rgba(155,123,255,.28); box-shadow:inset 0 0 0 2px rgba(155,123,255,.5); }
+.sq.sel::after{ content:''; position:absolute; inset:0; box-shadow:inset 0 0 0 3px var(--neon), 0 0 20px rgba(70,230,200,.4); }
+.sq.dot::before{ content:''; position:absolute; width:26%; height:26%; border-radius:50%; background:var(--neon); opacity:.5; box-shadow:0 0 10px var(--neon); z-index:1; }
+.coord{ display:flex; justify-content:space-between; padding:9px 6px 0; font-size:11px; color:var(--faint); font-family:'JetBrains Mono',monospace; letter-spacing:.08em; }
+.side{ display:flex; flex-direction:column; gap:16px; }
+.card{ background:var(--card); border:1px solid var(--line); border-radius:16px; padding:18px 20px; }
+.card h3{ font-size:11px; letter-spacing:.16em; text-transform:uppercase; color:var(--faint); font-weight:600; margin-bottom:14px; }
+.moves{ display:grid; grid-template-columns:1.8em 1fr 1fr; gap:5px 12px; font-size:14.5px; font-family:'JetBrains Mono',monospace; }
+.moves .nu{ color:var(--faint); text-align:right; } .moves .p{ padding:2px 8px; border-radius:7px; color:var(--ink); }
+.moves .p.on{ background:rgba(70,230,200,.16); color:var(--neon); }
+.act{ display:grid; grid-template-columns:1fr 1fr; gap:10px; }
+.btn{ font-family:'Space Grotesk',sans-serif; font-size:14px; font-weight:600; padding:13px; border-radius:11px; cursor:pointer;
+  border:1px solid var(--line); background:#1a1e2a; color:var(--ink); }
+.btn.g{ grid-column:1/-1; border:none; color:#06241e; background:linear-gradient(180deg,var(--neon),var(--neon-d));
+  box-shadow:0 8px 24px rgba(70,230,200,.32); }
+.btn.warn{ color:var(--pink); border-color:rgba(255,107,168,.3); background:rgba(255,107,168,.07); }
+.chat .m{ font-size:14px; margin-bottom:9px; line-height:1.45; } .chat .m .f{ font-weight:700; color:var(--violet); }
+.chat .m .f.me{ color:var(--neon); } .chat .m.sys{ color:var(--faint); font-style:italic; font-size:13px; }
+.cin{ display:flex; gap:8px; margin-top:6px; }
+.cin input{ flex:1; font-family:inherit; font-size:14px; padding:11px 13px; border-radius:10px; border:1px solid var(--line); background:var(--bg2); color:var(--ink); }
+.cin button{ width:44px; border-radius:10px; border:none; background:linear-gradient(180deg,var(--neon),var(--neon-d)); color:#06241e; font-size:16px; cursor:pointer; }
+</style>
+</head>
+<body>
+<div class="s" data-screen-label="Nocturne">
+  <div class="top">
+    <div class="brand"><div class="em">♞</div><div class="wm">LE&nbsp;<em>CERCLE</em></div></div>
+    <div class="status"><span class="d"></span>Aux blancs de jouer</div>
+    <div class="pill">10+5 · classée</div>
+  </div>
+  <div class="lay">
+    <div class="bcol">
+      <div class="seat"><div class="av b">I</div><div class="who"><div class="n">l'Inconnu</div><div class="r">1924</div></div><div class="clock">06:14</div></div>
+      <div class="shell">
+        <div class="board" id="b"></div>
+        <div class="coord"><span>a</span><span>b</span><span>c</span><span>d</span><span>e</span><span>f</span><span>g</span><span>h</span></div>
+      </div>
+      <div class="seat"><div class="av w">A</div><div class="who"><div class="n">Augustin V. <span style="color:var(--faint);font-weight:400">vous</span></div><div class="r">1742</div></div><div class="clock run">07:42</div></div>
+    </div>
+    <div class="side">
+      <div class="card"><h3>Notation</h3>
+        <div class="moves">
+          <span class="nu">1</span><span class="p">e4</span><span class="p">c5</span>
+          <span class="nu">2</span><span class="p">Cf3</span><span class="p">d6</span>
+          <span class="nu">3</span><span class="p">d4</span><span class="p">cxd4</span>
+          <span class="nu">4</span><span class="p">Cxd4</span><span class="p">Cf6</span>
+          <span class="nu">5</span><span class="p">Cc3</span><span class="p">a6</span>
+          <span class="nu">6</span><span class="p">Fe2</span><span class="p">e5</span>
+          <span class="nu">7</span><span class="p">Cb3</span><span class="p on">Fe7</span>
+        </div>
+      </div>
+      <div class="card chat"><h3>À la table</h3>
+        <div class="m sys">Partie commencée · 10+5</div>
+        <div class="m"><span class="f">l'Inconnu</span> · Najdorf. Du lourd.</div>
+        <div class="m"><span class="f me">Vous</span> · gg, on verra la finale.</div>
+        <div class="cin"><input placeholder="Écrire un mot…"><button>➤</button></div>
+      </div>
+      <div class="act">
+        <button class="btn">Nulle</button>
+        <button class="btn warn">Abandon</button>
+        <button class="btn g">Proposer une revanche</button>
+      </div>
+    </div>
+  </div>
+</div>
+<script>
+const FEN="r1bqk2r/1p2bppp/p2p1n2/4p3/4P3/1NN5/PPP1BPPP/R1BQK2R";
+const G={K:'♔',Q:'♕',R:'♖',B:'♗',N:'♘',P:'♙',k:'♚',q:'♛',r:'♜',b:'♝',n:'♞',p:'♟'};
+const bd=document.getElementById('b'); const rows=FEN.split('/');
+for(let r=0;r<8;r++){let f=0;for(const c of rows[r]){if(/\d/.test(c)){for(let k=0;k<+c;k++){add(r,f);f++;}}else{add(r,f,c);f++;}}}
+function add(r,f,p){const s=document.createElement('div');s.className='sq '+((r+f)%2===0?'l':'d');
+  if(p){const w=p===p.toUpperCase();s.innerHTML='<span class="'+(w?'pw':'pb')+'">'+G[p]+'</span>';}bd.appendChild(s);}
+const c=bd.children; c[0*8+5].classList.add('last'); c[1*8+4].classList.add('last');
+</script>
+</body>
+</html>

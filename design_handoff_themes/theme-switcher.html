@@ -1,0 +1,69 @@
+<!-- ============================================================
+     LE CERCLE — Sélecteur de thème (markup + script)
+     À insérer dans le vrai index.html. Voir README §4–5.
+     ============================================================ -->
+
+<!-- 1) MARKUP — à placer dans le <header>, à droite de la navigation.
+        Adapter le conteneur aux classes réelles du site. -->
+<div class="theme-switch" role="group" aria-label="Choisir un thème">
+  <button type="button" class="theme-opt" data-set-theme="bois"     title="Bois & or">●</button>
+  <button type="button" class="theme-opt" data-set-theme="clair"    title="Clair">●</button>
+  <button type="button" class="theme-opt" data-set-theme="marbre"   title="Marbre & laiton">●</button>
+  <button type="button" class="theme-opt" data-set-theme="nocturne" title="Nocturne">●</button>
+</div>
+
+<!-- 2) STYLE du sélecteur — coller dans le <style> (ou themes.css).
+        Chaque pastille montre la couleur d'accent du thème. -->
+<style>
+  .theme-switch{ display:flex; gap:6px; align-items:center; }
+  .theme-switch .theme-opt{
+    width:22px; height:22px; padding:0; border-radius:50%; cursor:pointer; font-size:0;
+    border:1px solid var(--edge-soft); background:#888; transition:transform .12s, box-shadow .12s;
+  }
+  .theme-switch .theme-opt:hover{ transform:scale(1.12); }
+  .theme-switch .theme-opt[data-set-theme="bois"]    { background:#c69a4c; }
+  .theme-switch .theme-opt[data-set-theme="clair"]   { background:#5b7a4f; }
+  .theme-switch .theme-opt[data-set-theme="marbre"]  { background:#a8863f; }
+  .theme-switch .theme-opt[data-set-theme="nocturne"]{ background:#46e6c8; }
+  .theme-switch .theme-opt.active{ box-shadow:0 0 0 2px var(--bg), 0 0 0 4px var(--gold); }
+</style>
+
+<!-- 3) SCRIPT — coller en bas de <body>, avant la fermeture, APRÈS le JS du site.
+        Persistance dans localStorage. N'écrase aucune autre clé. -->
+<script>
+(function(){
+  var KEY = 'lecercle:theme';
+  var DEFAULT = 'bois';
+  var VALID = ['bois','clair','marbre','nocturne'];
+
+  function apply(theme){
+    if (VALID.indexOf(theme) === -1) theme = DEFAULT;
+    document.documentElement.setAttribute('data-theme', theme);
+    try { localStorage.setItem(KEY, theme); } catch(e){}
+    document.querySelectorAll('.theme-opt').forEach(function(b){
+      b.classList.toggle('active', b.getAttribute('data-set-theme') === theme);
+    });
+  }
+
+  // Brancher les pastilles
+  document.querySelectorAll('.theme-opt').forEach(function(b){
+    b.addEventListener('click', function(){ apply(b.getAttribute('data-set-theme')); });
+  });
+
+  // Restaurer le choix précédent (ou défaut)
+  var saved;
+  try { saved = localStorage.getItem(KEY); } catch(e){}
+  apply(saved || DEFAULT);
+})();
+</script>
+
+<!-- 4) ANTI-FLASH (optionnel mais recommandé) — à placer dans le <head>,
+        AVANT toute feuille de style, pour appliquer le thème dès le 1er paint. -->
+<script>
+  (function(){
+    try {
+      var t = localStorage.getItem('lecercle:theme') || 'bois';
+      document.documentElement.setAttribute('data-theme', t);
+    } catch(e){ document.documentElement.setAttribute('data-theme','bois'); }
+  })();
+</script>
