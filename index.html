@@ -1,12 +1,23 @@
 <!DOCTYPE html>
-<html lang="fr">
+<html lang="fr" data-theme="bois">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
+<!-- Anti-flash : applique le thème mémorisé dès le 1er paint, avant toute feuille de style -->
+<script>
+  (function(){
+    try {
+      var t = localStorage.getItem('lecercle:theme') || 'bois';
+      document.documentElement.setAttribute('data-theme', t);
+    } catch(e){ document.documentElement.setAttribute('data-theme','bois'); }
+  })();
+</script>
 <title>Le Cercle — Plateforme d'Échecs en ligne</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@400;500;600;700&family=Spectral:ital,wght@0,300;0,400;0,500;0,600;1,400&display=swap" rel="stylesheet">
+<!-- Polices additionnelles des thèmes (Clair, Marbre, Nocturne) — cf. themes.css -->
+<link href="https://fonts.googleapis.com/css2?family=Newsreader:ital,opsz,wght@0,6..72,500;0,6..72,600;1,6..72,500&family=Hanken+Grotesk:wght@400;500;600;700&family=Jost:wght@300;400;500;600&family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@500;600&display=swap" rel="stylesheet">
 <style>
   /* ============================================================
      LE CERCLE — habillage raffiné (refonte)
@@ -324,11 +335,168 @@
     .side { width: 100%; max-width: 500px; }
   }
 
+  /* ============================================================
+     SYSTÈME DE THÈMES COMMUTABLE (cf. design_handoff_themes/themes.css)
+     ------------------------------------------------------------
+     Chaque thème REDÉFINIT les mêmes variables que le site utilise
+     déjà (--gold, --check, --sq-light, --font-text, …). Le moteur
+     d'échecs et le JS ne sont PAS modifiés : ils lisent ces var()
+     et suivent automatiquement le thème actif.
+     Activation : <html data-theme="bois|clair|marbre|nocturne">.
+     Placé APRÈS le :root d'origine : la spécificité de
+     :root[data-theme] garantit que ces valeurs l'emportent.
+     (Les polices sont chargées via <link> dans le <head>.)
+     ============================================================ */
+
+  /* ----------  A · BOIS & OR  (défaut — refonte déjà intégrée)  ---------- */
+  :root[data-theme="bois"] {
+    --theme-scheme: dark;
+    --bg:#14110b; --bg-2:#1a160f;
+    --panel:#211a12; --panel-2:#1b150e;
+    --panel-edge:#3b2f1f; --edge-soft:#2a2117; --inset:#16110b;
+    --hair:rgba(201,155,74,.14);
+    --sq-light:#e7d6b2; --sq-dark:#6c4a2e; --frame:#2c2014;
+    --gold:#c69a4c; --gold-bright:#e4c781; --gold-deep:#8c6a30;
+    --check:#9a4133; --green:#7a8d54;
+    --ink:#ece2cb; --ink-dim:#c9bd9f; --muted:#998b6e; --faint:#6f654f;
+    --paper:#f0e7d2; --paper-2:#e9dcbf; --paper-ink:#322716; --paper-line:#cbb98f;
+    --font-display:'Cormorant Garamond', Georgia, serif;
+    --font-text:'Spectral', Georgia, serif;
+    --shadow:0 22px 60px rgba(0,0,0,.55);
+    --shadow-sm:0 8px 22px rgba(0,0,0,.4);
+  }
+
+  /* ----------  B · CLAIR  (épuré, lumineux, accent vert sauge)  ---------- */
+  :root[data-theme="clair"] {
+    --theme-scheme: light;
+    --bg:#f3f1ec; --bg-2:#ffffff;
+    --panel:#ffffff; --panel-2:#ffffff;
+    --panel-edge:#e4e1d8; --edge-soft:#e4e1d8; --inset:#f3f1ec;
+    --hair:#e4e1d8;
+    --sq-light:#eceae2; --sq-dark:#9fb08f; --frame:#d6d9cd;
+    --gold:#5b7a4f; --gold-bright:#6f9160; --gold-deep:#456038;
+    --check:#a8503f; --green:#5b7a4f;
+    --ink:#22251f; --ink-dim:#4a4e43; --muted:#6b6f64; --faint:#a4a89c;
+    --paper:#ffffff; --paper-2:#f7f5ef; --paper-ink:#22251f; --paper-line:#e4e1d8;
+    --font-display:'Newsreader', Georgia, serif;
+    --font-text:'Hanken Grotesk', system-ui, sans-serif;
+    --shadow:0 20px 50px rgba(40,45,35,.16);
+    --shadow-sm:0 8px 22px rgba(40,45,35,.08);
+  }
+
+  /* ----------  C · MARBRE & LAITON  (club de luxe, dorures, serif)  ---------- */
+  :root[data-theme="marbre"] {
+    --theme-scheme: light;
+    --bg:#eceae4; --bg-2:#f7f5ef;
+    --panel:#f7f5ef; --panel-2:#f2efe7;
+    --panel-edge:#ddd8cc; --edge-soft:#ddd8cc; --inset:#ffffff;
+    --hair:#ddd8cc;
+    --sq-light:#efece2; --sq-dark:#c9b49a; --frame:#6f5824;
+    --gold:#a8863f; --gold-bright:#c9a85a; --gold-deep:#86692c;
+    --check:#9a4b3a; --green:#7a8d54;
+    --ink:#2a2620; --ink-dim:#4a4438; --muted:#7a7468; --faint:#a8a294;
+    --paper:#f7f5ef; --paper-2:#f2efe7; --paper-ink:#2a2620; --paper-line:#ddd8cc;
+    --font-display:'Cormorant Garamond', Georgia, serif;
+    --font-text:'Jost', system-ui, sans-serif;
+    --shadow:0 22px 50px rgba(60,48,20,.22);
+    --shadow-sm:0 8px 24px rgba(80,68,40,.1);
+  }
+
+  /* ----------  D · NOCTURNE  (sombre, électrique, énergie blitz)  ---------- */
+  :root[data-theme="nocturne"] {
+    --theme-scheme: dark;
+    --bg:#0a0b10; --bg-2:#0e1018;
+    --panel:#13161f; --panel-2:#10131b;
+    --panel-edge:#242838; --edge-soft:#242838; --inset:#0e1018;
+    --hair:rgba(155,123,255,.16);
+    --sq-light:#2a3042; --sq-dark:#171b27; --frame:#242838;
+    --gold:#46e6c8; --gold-bright:#6ff0d8; --gold-deep:#2bb79e;
+    --check:#ff6ba8; --green:#9b7bff;
+    --ink:#e8ebf2; --ink-dim:#b8bdcf; --muted:#8a8fa3; --faint:#565d72;
+    --paper:#13161f; --paper-2:#10131b; --paper-ink:#e8ebf2; --paper-line:#242838;
+    --font-display:'Space Grotesk', system-ui, sans-serif;
+    --font-text:'Space Grotesk', system-ui, sans-serif;
+    --shadow:0 24px 60px rgba(0,0,0,.5);
+    --shadow-sm:0 10px 30px rgba(0,0,0,.45);
+  }
+
+  /* ---------- Ajustements structurels par thème ---------- */
+  /* Fond du site : dégradé sombre en dur d'origine → éclairci sur thèmes clairs. */
+  :root[data-theme="clair"] body {
+    background: radial-gradient(120% 80% at 50% -10%, #ffffff 0%, var(--bg) 60%), var(--bg);
+  }
+  :root[data-theme="marbre"] body {
+    background: radial-gradient(130% 90% at 50% -10%, #f6f4ee 0%, var(--bg) 60%), var(--bg);
+  }
+  :root[data-theme="nocturne"] body {
+    background:
+      radial-gradient(80% 60% at 15% 0%, rgba(155,123,255,.12), transparent 60%),
+      radial-gradient(70% 60% at 100% 30%, rgba(70,230,200,.10), transparent 55%),
+      var(--bg);
+  }
+  /* Voile de bruit (body::before) : discret sur fond clair, absent en nocturne. */
+  :root[data-theme="clair"] body::before,
+  :root[data-theme="marbre"] body::before { opacity:.22; mix-blend-mode:multiply; }
+  :root[data-theme="nocturne"] body::before { opacity:0; }
+
+  /* Pendule active : lueur néon en nocturne, halo doux sur fond clair. */
+  :root[data-theme="nocturne"] .clock.running {
+    color:#06241e;
+    background:linear-gradient(180deg, var(--gold-bright), var(--gold-deep));
+    box-shadow:0 0 24px rgba(70,230,200,.45);
+  }
+  :root[data-theme="clair"] .clock.running,
+  :root[data-theme="marbre"] .clock.running { color:#fff; }
+  :root[data-theme="clair"] .clock.running { background:var(--gold); border-color:var(--gold); }
+
+  /* Bouton primaire : aplat net en thèmes clairs (pas de relief « or »). */
+  :root[data-theme="clair"] button.primary {
+    background:var(--gold); color:#fff; box-shadow:0 6px 16px rgba(91,122,79,.28);
+  }
+  :root[data-theme="nocturne"] button.primary {
+    color:#06241e;
+    background:linear-gradient(180deg, var(--gold-bright), var(--gold-deep));
+    box-shadow:0 8px 24px rgba(70,230,200,.32);
+  }
+
+  /* Surbrillance « dernier coup » : suit l'accent du thème. */
+  :root[data-theme="nocturne"] .sq.lastmove::after {
+    box-shadow:inset 0 0 0 2px rgba(155,123,255,.5);
+    background:rgba(155,123,255,.22);
+  }
+
+  /* Coins du plateau : arrondis sur Clair & Nocturne. */
+  :root[data-theme="clair"] .board,
+  :root[data-theme="nocturne"] .board { border-width:0; border-radius:14px; overflow:hidden; }
+
+  /* ---------- Sélecteur de thème (pastilles) ---------- */
+  header { position: relative; }
+  .theme-switch{ display:flex; gap:6px; align-items:center; position:absolute; top:0; right:0; }
+  .theme-switch .theme-opt{
+    width:22px; height:22px; padding:0; border-radius:50%; cursor:pointer; font-size:0;
+    border:1px solid var(--edge-soft); background:#888; transition:transform .12s, box-shadow .12s;
+  }
+  .theme-switch .theme-opt:hover{ transform:scale(1.12); }
+  .theme-switch .theme-opt[data-set-theme="bois"]    { background:#c69a4c; }
+  .theme-switch .theme-opt[data-set-theme="clair"]   { background:#5b7a4f; }
+  .theme-switch .theme-opt[data-set-theme="marbre"]  { background:#a8863f; }
+  .theme-switch .theme-opt[data-set-theme="nocturne"]{ background:#46e6c8; }
+  .theme-switch .theme-opt.active{ box-shadow:0 0 0 2px var(--bg), 0 0 0 4px var(--gold); }
+  @media (max-width: 560px){
+    .theme-switch{ position:static; justify-content:center; margin-top:14px; }
+  }
+
 </style>
 </head>
 <body>
 
 <header>
+  <div class="theme-switch" role="group" aria-label="Choisir un thème">
+    <button type="button" class="theme-opt" data-set-theme="bois"     title="Bois &amp; or">●</button>
+    <button type="button" class="theme-opt" data-set-theme="clair"    title="Clair">●</button>
+    <button type="button" class="theme-opt" data-set-theme="marbre"   title="Marbre &amp; laiton">●</button>
+    <button type="button" class="theme-opt" data-set-theme="nocturne" title="Nocturne">●</button>
+  </div>
   <h1>Le<span class="knight">♞</span>Cercle</h1>
   <p>Plateforme d'échecs en ligne</p>
   <div class="rule"></div>
@@ -638,6 +806,12 @@
             <option value="900|10">Rapide — 15 min + 10 s</option>
             <option value="inf">Sans pendule</option>
           </select>
+          <select id="admTournFormat" style="flex:1; min-width:160px">
+            <option value="round-robin" selected>Round-robin (toutes rondes)</option>
+            <option value="elimination">Élimination directe</option>
+            <option value="suisse">Système suisse</option>
+          </select>
+          <input type="number" id="admTournRondes" min="2" max="15" value="5" title="Nombre de rondes (suisse)" style="width:130px; display:none" placeholder="Rondes">
           <button class="primary" id="admTournCreate">＋ Créer</button>
         </div>
         <input type="text" id="admTournDesc" maxlength="140" placeholder="Description (facultatif)" style="width:100%; margin-bottom:8px">
@@ -3093,14 +3267,16 @@ $('admTournCreate').addEventListener('click', async () => {
   if (list.some(t => t.nom.trim().toLowerCase() === nom.toLowerCase())) { msg.textContent = 'Ce nom de tournoi est déjà pris.'; return; }
   const tcv = $('admTournTc').value;
   const cadence = tcv === 'inf' ? null : { base: +tcv.split('|')[0], inc: +tcv.split('|')[1] };
+  const format = $('admTournFormat').value;
   const id = 't' + Date.now().toString(36) + Math.random().toString(36).slice(2, 5);
   const T = {
     id, nom, description: $('admTournDesc').value.trim(),
-    format: 'round-robin', cadence,
+    format, cadence,
     statut: 'inscriptions', inscriptionsOuvertes: true,
     participants: [], rondes: [], classement: [], rondeCourante: 0,
     creePar: pseudo, creeLe: Date.now(), debutLe: null
   };
+  if (format === 'suisse') T.nbRondes = Math.max(2, Math.min(15, parseInt($('admTournRondes').value, 10) || 5));
   await saveTournament(T);
   await adminLog('Création du tournoi « ' + nom + ' »');
   $('admTournNom').value = ''; $('admTournDesc').value = ''; msg.textContent = '';
@@ -3426,6 +3602,34 @@ setInterval(() => { if (currentView === 'tournois' && !document.hidden) refreshT
   if (pseudo) { heartbeat(); refreshThreads(); }
   refreshLobby();
   refreshSalon();
+})();
+</script>
+
+<!-- ===================== Sélecteur de thème ===================== -->
+<script>
+(function(){
+  var KEY = 'lecercle:theme';
+  var DEFAULT = 'bois';
+  var VALID = ['bois','clair','marbre','nocturne'];
+
+  function apply(theme){
+    if (VALID.indexOf(theme) === -1) theme = DEFAULT;
+    document.documentElement.setAttribute('data-theme', theme);
+    try { localStorage.setItem(KEY, theme); } catch(e){}
+    document.querySelectorAll('.theme-opt').forEach(function(b){
+      b.classList.toggle('active', b.getAttribute('data-set-theme') === theme);
+    });
+  }
+
+  // Brancher les pastilles
+  document.querySelectorAll('.theme-opt').forEach(function(b){
+    b.addEventListener('click', function(){ apply(b.getAttribute('data-set-theme')); });
+  });
+
+  // Restaurer le choix précédent (ou défaut)
+  var saved;
+  try { saved = localStorage.getItem(KEY); } catch(e){}
+  apply(saved || DEFAULT);
 })();
 </script>
 </body>
