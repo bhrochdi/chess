@@ -3184,7 +3184,7 @@ async function renderAdminTournois() {
     const tr = document.createElement('tr');
     tr.innerHTML =
       '<td><strong>' + esc(t.nom) + '</strong></td>' +
-      '<td class="small">' + esc(t.format) + '</td>' +
+      '<td class="small">' + formatLabelTourn(t.format) + '</td>' +
       '<td class="small">' + statutLabelTourn(t.statut) + '</td>' +
       '<td class="small">' + t.nbInscrits + '</td>';
     const td = document.createElement('td'); td.className = 'actions';
@@ -3193,6 +3193,26 @@ async function renderAdminTournois() {
     tr.appendChild(td); tb.appendChild(tr);
   }
   await renderAdminTournDetail();
+}
+
+/* Libellé lisible du format. */
+function formatLabelTourn(f) {
+  return f === 'elimination' ? 'Élimination directe' : f === 'suisse' ? 'Système suisse' : 'Round-robin';
+}
+/* Une ronde suivante est-elle possible ? (dépend du format) */
+function peutRondeSuivante(T) {
+  if (T.format === 'round-robin') return T.rondeCourante < T.rondes.length;
+  if (T.format === 'suisse') return T.rondeCourante < (T.nbRondes || 0);
+  // élimination : il reste un tour tant que la ronde courante compte plus d'un match
+  const c = T.rondes.find(r => r.numero === T.rondeCourante);
+  return !!c && c.matchs.length > 1;
+}
+/* Progression « ronde X / total » selon le format (total connu ou non). */
+function progressionRonde(T) {
+  if (T.statut !== 'en-cours') return '';
+  if (T.format === 'round-robin') return ' · ronde ' + T.rondeCourante + '/' + T.rondes.length;
+  if (T.format === 'suisse') return ' · ronde ' + T.rondeCourante + '/' + (T.nbRondes || '?');
+  return ' · ronde ' + T.rondeCourante;    // élimination : total variable
 }
 
 async function renderAdminTournDetail() {
@@ -3205,7 +3225,7 @@ async function renderAdminTournDetail() {
 
   const head = document.createElement('div');
   head.innerHTML = '<h2 style="color:var(--gold)">' + esc(T.nom) + ' — ' + statutLabelTourn(T.statut) +
-    ' <span class="small">(' + esc(T.format) + ', ' + tcLabelTourn(T.cadence) + ')</span></h2>' +
+    ' <span class="small">(' + formatLabelTourn(T.format) + ', ' + tcLabelTourn(T.cadence) + progressionRonde(T) + ')</span></h2>' +
     (T.description ? '<p class="small">' + esc(T.description) + '</p>' : '');
   box.appendChild(head);
 
@@ -3214,7 +3234,7 @@ async function renderAdminTournDetail() {
     bar.appendChild(adminBtn(T.inscriptionsOuvertes ? 'Fermer les inscriptions' : 'Ouvrir les inscriptions', () => basculerInscriptions(T.id)));
     bar.appendChild(adminBtn('Lancer le tournoi', () => lancerTournoi(T.id), 'primary'));
   } else if (T.statut === 'en-cours') {
-    if (T.rondeCourante < T.rondes.length) bar.appendChild(adminBtn('Ronde suivante', () => rondeSuivante(T.id)));
+    if (peutRondeSuivante(T)) bar.appendChild(adminBtn('Ronde suivante', () => rondeSuivante(T.id)));
     bar.appendChild(adminBtn('Clore le tournoi', () => cloreTournoi(T.id), 'danger'));
   }
   box.appendChild(bar);
@@ -3282,6 +3302,11 @@ $('admTournCreate').addEventListener('click', async () => {
   $('admTournNom').value = ''; $('admTournDesc').value = ''; msg.textContent = '';
   admTournSel = id;
   renderAdminTournois();
+});
+
+/* Le champ « nombre de rondes » ne concerne que le système suisse. */
+$('admTournFormat').addEventListener('change', e => {
+  $('admTournRondes').style.display = e.target.value === 'suisse' ? '' : 'none';
 });
 
 async function basculerInscriptions(id) {
@@ -3504,7 +3529,7 @@ async function renderTournDetail() {
 
   const head = document.createElement('div');
   head.innerHTML = '<h2 style="color:var(--gold)">' + esc(T.nom) + ' — ' + statutLabelTourn(T.statut) +
-    ' <span class="small">(' + esc(T.format) + ', ' + tcLabelTourn(T.cadence) + ')</span></h2>' +
+    ' <span class="small">(' + formatLabelTourn(T.format) + ', ' + tcLabelTourn(T.cadence) + ')</span></h2>' +
     (T.description ? '<p class="small">' + esc(T.description) + '</p>' : '');
   box.appendChild(head);
 
