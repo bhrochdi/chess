@@ -1,9 +1,9 @@
 # Le Cercle — Plateforme d'échecs en ligne
 
 ## Contexte du projet
-Prototype monofichier (`le-cercle-echecs.html`, ~2 400 lignes HTML/CSS/JS vanilla)
-développé avec Claude.ai, à faire évoluer vers une application autonome
-hébergée sur WampServer.
+Parti d'un prototype monofichier développé avec Claude.ai, devenu une
+application autonome hébergée sur WampServer : front éclaté en
+`index.html` + `css/` + `js/`, backend PHP/MySQL (`api/`).
 
 ## Stack
 - Front : HTML/CSS/JS vanilla — aucun framework, aucune dépendance npm côté front
@@ -12,14 +12,19 @@ hébergée sur WampServer.
   (adapter le chemin si besoin)
 
 ## Architecture actuelle (à lire avant toute modification)
-- `<script id="engineCode">` : moteur d'échecs PUR (aucune référence au DOM).
-  Il est réutilisé tel quel dans un Web Worker pour l'IA — ne jamais y
-  introduire de code DOM. Moteur testé et validé : ne pas le modifier sans
-  tests de non-régression (20 coups en position initiale, mat du berger,
-  roque, prise en passant).
-- Second `<script>` : l'application — 5 vues (Accueil, Jeu local, Partie en
-  ligne, Salon, Messages) + espace Admin, rendu d'échiquier générique
-  `BoardUI`, authentification avec base JSON `db:users`.
+Depuis `refactor/decoupage`, le front est éclaté (plus de monofichier) :
+`index.html` (markup) + `css/styles.css` + `js/` (voir `README.md`).
+- `js/engine.js` : moteur d'échecs PUR (aucune référence au DOM). Il est
+  réutilisé tel quel — chargé dans `js/ai-worker.js` via `importScripts` pour
+  l'IA — ne jamais y introduire de code DOM. Moteur testé et validé : ne pas
+  le modifier sans tests de non-régression (20 coups en position initiale, mat
+  du berger, roque, prise en passant ; cf. `tests/`).
+- `js/app.js` : l'application — 6 vues (Accueil, Jeu local, Partie en ligne,
+  Salon, Messages, Tournois) + espace Admin, rendu d'échiquier générique
+  `BoardUI`, authentification (serveur en mode PHP via `api/auth.php`, base
+  JSON `db:users` en mode artefact). `js/theme-switcher.js` gère le thème.
+  Scripts classiques chargés dans l'ordre engine.js → app.js (portée globale
+  partagée).
 - **Point d'abstraction clé** : TOUT l'accès au stockage passe par 4 fonctions
   — `sget`, `sset`, `slist`, `sdel` — et le flag `HAS_STORAGE`. C'est le seul
   endroit où brancher un backend.
