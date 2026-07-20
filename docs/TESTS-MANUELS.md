@@ -227,11 +227,15 @@ ces scénarios couvrent l'usage réel en navigateur.
 
 ---
 
-## 8. Tournois (`feat/admin-tournois`)
+## 8. Tournois (`feat/admin-tournois`, `feat/tournois-formats`)
 
-Round-robin uniquement (Étape 1+2). La génération d'appariement est couverte
-par un **test unitaire** : `node tests/round-robin.test.js` (doit afficher
-« TOUS LES TESTS PASSENT »).
+Trois formats : **round-robin**, **élimination directe**, **système suisse**.
+La génération est couverte par des **tests unitaires** :
+`node tests/round-robin.test.js` et `node tests/tournois-formats.test.js`
+(doivent afficher « TOUS LES TESTS PASSENT »).
+
+Le format se choisit à la création (sélecteur) ; pour le **suisse**, un champ
+« nombre de rondes » apparaît (masqué pour les autres formats).
 
 ### 8.1 Administration — cycle de vie (compte admin)
 1. Onglet **⚙ Admin** → carte **Tournois** → créer « Open du Cercle »
@@ -269,6 +273,32 @@ SELECT cle FROM le_cercle.kv_store WHERE scope='' AND (cle='db:tournaments' OR c
 ```
 - ✅ `db:tournaments` (index léger) et un `tournament:<id>` par tournoi.
 - ✅ Les `game:<id>` de tournoi portent `tournamentId`/`rondeId`/`matchIndex`.
+
+### 8.4 Élimination directe
+1. Créer un tournoi **format « Élimination directe »**, inscrire **5 joueurs**, **Lancer**.
+   - ✅ Ronde 1 = **bracket de 8** : 1 match réel + **3 byes** (les byes ont un
+     résultat auto et **ne créent pas de partie**).
+   - ✅ Le classement compte le bye comme une victoire.
+2. Saisir les résultats de la ronde ; cliquer **Ronde suivante**.
+   - ✅ Le bouton **apparaît** (auparavant absent en élim) et génère la ronde des
+     **vainqueurs**. L'en-tête indique « ronde 2 ».
+   - ✅ Un match **nul** en élimination **bloque** l'avancement (message : saisir
+     un résultat décisif).
+3. Continuer jusqu'à la finale (1 match) → **Ronde suivante** disparaît, **Clore**.
+   - ✅ Le vainqueur est en tête du classement (plus de victoires).
+
+### 8.5 Système suisse
+1. Créer un tournoi **format « Système suisse »** → le champ **« nombre de
+   rondes »** apparaît (le régler, ex. 3). Inscrire **5 joueurs**, **Lancer**.
+   - ✅ Ronde 1 appariée ; joueur impair → **bye** (1 pt).
+2. Saisir les résultats, **Ronde suivante**.
+   - ✅ Appariement par **score**, **sans rejouer** une paire déjà rencontrée.
+   - ✅ L'en-tête indique « ronde 2/3 ». Au-delà de `nbRondes`, **Ronde suivante**
+     est refusée (clôturer).
+3. Vérifier le **classement** (points 1 / 0,5 / 0, tri points puis victoires).
+
+> Non-régression : le **round-robin** reste inchangé (toutes les rondes générées
+> au lancement, avance par pointeur).
 
 ---
 
