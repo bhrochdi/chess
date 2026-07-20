@@ -1,0 +1,2372 @@
+'use strict';
+
+/* ===================== Utilitaires ===================== */
+const $ = id => document.getElementById(id);
+const GLYPH = { w: { K:'♔', Q:'♕', R:'♖', B:'♗', N:'♘', P:'♙' }, b: { K:'♚', Q:'♛', R:'♜', B:'♝', N:'♟'.replace('♟','♞'), P:'♟' } };
+GLYPH.b.N = '♞';
+const EN2FR = { K:'R', Q:'D', R:'T', B:'F', N:'C' };
+const sanFr = san => san.replace(/[KQRBN]/g, ch => EN2FR[ch]);
+const esc = t => { const d = document.createElement('div'); d.textContent = t == null ? '' : String(t); return d.innerHTML; };
+const fmtTime = ts => new Date(ts).toLocaleTimeString('fr-FR', { hour:'2-digit', minute:'2-digit' });
+const fmtClock = sec => {
+  if (sec == null) return '—';
+  sec = Math.max(0, Math.ceil(sec));
+  const m = Math.floor(sec / 60), s = sec % 60;
+  return m + ':' + String(s).padStart(2, '0');
+};
+function tinySound() {
+  try {
+    const ctx = tinySound.ctx || (tinySound.ctx = new (window.AudioContext || window.webkitAudioContext)());
+    const o = ctx.createOscillator(), g = ctx.createGain();
+    o.frequency.value = 520; o.type = 'sine';
+    g.gain.setValueAtTime(0.06, ctx.currentTime);
+    g.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + 0.12);
+    o.connect(g); g.connect(ctx.destination);
+    o.start(); o.stop(ctx.currentTime + 0.13);
+  } catch (e) { /* silencieux */ }
+}
+
+/* ===================== Stockage partagé =====================
+   Deux backends possibles, choisis au chargement :
+   - window.storage : API de l'artefact Claude.ai (compatibilité).
+   - api/storage.php : backend PHP/MySQL (déploiement autonome WampServer).
+   Le reste de l'application ne connaît que sget/sset/slist/sdel
+   et le drapeau HAS_STORAGE — seul ce bloc change selon le backend. */
+const USE_ARTIFACT = typeof window.storage !== 'undefined' && window.storage && typeof window.storage.get === 'function';
+const USE_PHP = !USE_ARTIFACT && /^https?:$/.test(location.protocol);
+const HAS_STORAGE = USE_ARTIFACT || USE_PHP;
+const API_URL = 'api/storage.php';
+
+async function apiStorage(action, payload) {
+  const res = await fetch(API_URL, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    credentials: 'same-origin',           // cookie de session PHP (stockage personnel)
+    body: JSON.stringify(Object.assign({ action }, payload))
+  });
+  if (!res.ok) throw new Error('HTTP ' + res.status);
+  return await res.json();
+}
+
+async function sget(key, shared = true) {
+  if (!HAS_STORAGE) return null;
+  try {
+    const r = USE_ARTIFACT
+      ? await window.storage.get(key, shared)
+      : await apiStorage('get', { key, shared });
+    return r && r.value != null ? JSON.parse(r.value) : null;
+  } catch (e) { return null; }
+}
+async function sset(key, val, shared = true) {
+  if (!HAS_STORAGE) return false;
+  try {
+    if (USE_ARTIFACT) { const r = await window.storage.set(key, JSON.stringify(val), shared); return !!r; }
+    const r = await apiStorage('set', { key, value: JSON.stringify(val), shared });
+    return !!(r && r.ok);
+  } catch (e) { console.error('storage.set', key, e); return false; }
+}
+async function slist(prefix, shared = true) {
+  if (!HAS_STORAGE) return [];
+  try {
+    const r = USE_ARTIFACT
+      ? await window.storage.list(prefix, shared)
+      : await apiStorage('list', { prefix, shared });
+    return (r && r.keys) || [];
+  } catch (e) { return []; }
+}
+
+/* ===================== Couche "Partie" (G) ===================== */
+function newG(tc) { // tc: {base (s), inc (s)} ou null
+  const state = initialPosition();
+  return {
+    state,
+    moves: [],                    // SAN anglais
+    captured: { w: [], b: [] },
+    posKeys: [positionKey(state)],
+    lastMove: null,
+    over: null,                   // { title, detail, result, reason }
+    clocks: tc ? { w: tc.base, b: tc.base, inc: tc.inc, lastTs: null, started: false } : null
+  };
+}
+
+function finishG(G, result, title, detail, reason) {
+  G.over = { result, title, detail, reason };
+}
+
+/* Joue un coup validé ; gère pendule, notation, fins de partie. */
+function doMove(G, move, promoPiece) {
+  const mover = G.state.turn;
+  const san = toSAN(G.state, move, promoPiece);
+  const captured = applyMove(G.state, move, promoPiece);
+  if (captured) G.captured[mover].push(captured);
+  G.lastMove = move;
+
+  // Pendule
+  if (G.clocks) {
+    const now = Date.now();
+    if (G.clocks.started && G.clocks.lastTs) {
+      G.clocks[mover] = Math.max(0, G.clocks[mover] - (now - G.clocks.lastTs) / 1000) + (G.clocks.inc || 0);
+    }
+    G.clocks.lastTs = now;
+    G.clocks.started = true;
+  }
+
+  // Répétitions
+  const key = positionKey(G.state);
+  G.posKeys.push(key);
+  let reps = 0;
+  for (const k of G.posKeys) if (k === key) reps++;
+
+  // Suffixe & fins
+  let suffix = '';
+  const next = G.state.turn;
+  const replies = allLegalMoves(G.state, next);
+  const chk = inCheck(G.state, next);
+  const moveNum = Math.ceil((G.moves.length + 1) / 2);
+  if (replies.length === 0) {
+    if (chk) {
+      suffix = '#';
+      const winner = next === 'w' ? 'Les Noirs' : 'Les Blancs';
+      finishG(G, next === 'w' ? '0-1' : '1-0', 'Échec et mat',
+        winner + ' remportent la partie en ' + moveNum + ' coups.', 'mat');
+    } else {
+      finishG(G, '1/2-1/2', 'Pat', 'Aucun coup légal : la partie est nulle.', 'pat');
+    }
+  } else if (chk) suffix = '+';
+  G.moves.push(san + suffix);
+
+  if (!G.over) {
+    if (G.state.halfmove >= 100)
+      finishG(G, '1/2-1/2', 'Partie nulle', 'Règle des 50 coups : 50 coups sans prise ni mouvement de pion.', '50coups');
+    else if (reps >= 3)
+      finishG(G, '1/2-1/2', 'Partie nulle', 'Triple répétition de la même position.', 'repetition');
+    else if (insufficientMaterial(G.state))
+      finishG(G, '1/2-1/2', 'Partie nulle', 'Matériel insuffisant pour mater.', 'materiel');
+  }
+  tinySound();
+}
+
+/* Temps restant affichable (décompte en direct côté client) */
+function liveClock(G, col) {
+  if (!G.clocks) return null;
+  let t = G.clocks[col];
+  if (G.clocks.started && !G.over && G.state.turn === col && G.clocks.lastTs)
+    t -= (Date.now() - G.clocks.lastTs) / 1000;
+  return Math.max(0, t);
+}
+
+/* Export PGN */
+function exportPGN(G, white, black, eventName) {
+  const d = new Date();
+  const pad = n => String(n).padStart(2, '0');
+  const date = d.getFullYear() + '.' + pad(d.getMonth()+1) + '.' + pad(d.getDate());
+  const result = G.over ? G.over.result : '*';
+  let pgn = '[Event "' + eventName + '"]\n[Site "Le Cercle"]\n[Date "' + date + '"]\n[White "' + white + '"]\n[Black "' + black + '"]\n[Result "' + result + '"]\n\n';
+  let line = '';
+  for (let i = 0; i < G.moves.length; i += 2) {
+    line += (i/2 + 1) + '. ' + G.moves[i] + (G.moves[i+1] ? ' ' + G.moves[i+1] : '') + ' ';
+    if (line.length > 70) { pgn += line.trim() + '\n'; line = ''; }
+  }
+  pgn += line + result + '\n';
+  const blob = new Blob([pgn], { type: 'application/x-chess-pgn' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'le-cercle-' + Date.now() + '.pgn';
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(a.href), 4000);
+}
+
+/* ===================== Modales communes ===================== */
+function askPromotion(color) {
+  return new Promise(resolve => {
+    const box = $('promoChoices');
+    box.innerHTML = '';
+    const NAMES = { Q:'Dame', R:'Tour', B:'Fou', N:'Cavalier' };
+    for (const t of ['Q','R','B','N']) {
+      const b = document.createElement('button');
+      b.textContent = GLYPH[color][t];
+      b.setAttribute('aria-label', NAMES[t]);
+      b.addEventListener('click', () => {
+        $('promoOverlay').classList.remove('show');
+        resolve(t);
+      });
+      box.appendChild(b);
+    }
+    $('promoOverlay').classList.add('show');
+  });
+}
+function showEnd(G) {
+  if (!G.over) return;
+  $('endTitle').textContent = G.over.title;
+  $('endText').textContent = G.over.detail + '  (' + G.over.result + ')';
+  setTimeout(() => $('endOverlay').classList.add('show'), 400);
+}
+$('endClose').addEventListener('click', () => $('endOverlay').classList.remove('show'));
+
+let confirmResolve = null;
+function askConfirm(title, text) {
+  return new Promise(resolve => {
+    confirmResolve = resolve;
+    $('confirmTitle').textContent = title;
+    $('confirmText').textContent = text;
+    $('confirmOverlay').classList.add('show');
+  });
+}
+$('confirmYes').addEventListener('click', () => { $('confirmOverlay').classList.remove('show'); if (confirmResolve) { confirmResolve(true); confirmResolve = null; } });
+$('confirmNo').addEventListener('click', () => { $('confirmOverlay').classList.remove('show'); if (confirmResolve) { confirmResolve(false); confirmResolve = null; } });
+
+/* ===================== Rendu d'échiquier générique ===================== */
+function BoardUI(boardEl, opts) {
+  // opts: { getG, canPlay(color)->bool, onMove(move, promoPiece), flipped() }
+  const frame = boardEl.closest('.board-frame');
+  const ranksEl = frame.querySelector('.ranks');
+  const filesEl = frame.querySelector('.files');
+  let selected = null, legal = [];
+
+  function coords() {
+    ranksEl.innerHTML = ''; filesEl.innerHTML = '';
+    for (let i = 0; i < 8; i++) {
+      const r = document.createElement('span');
+      r.textContent = opts.flipped() ? i + 1 : 8 - i;
+      ranksEl.appendChild(r);
+      const f = document.createElement('span');
+      f.textContent = FILES[opts.flipped() ? 7 - i : i];
+      filesEl.appendChild(f);
+    }
+  }
+
+  async function onSquare(r, c) {
+    const G = opts.getG();
+    if (!G || G.over) return;
+    const s = G.state;
+    if (!opts.canPlay(s.turn)) return;
+    const mv = legal.find(m => m.tr === r && m.tc === c);
+    if (mv) {
+      selected = null; legal = [];
+      let promo = 'Q';
+      if (mv.promo) promo = await askPromotion(s.turn);
+      opts.onMove(mv, promo);
+      return;
+    }
+    const p = s.board[r][c];
+    if (p && p.col === s.turn) { selected = { r, c }; legal = legalMoves(s, r, c); }
+    else { selected = null; legal = []; }
+    render();
+  }
+
+  function render() {
+    const G = opts.getG();
+    coords();
+    boardEl.innerHTML = '';
+    if (!G) return;
+    const s = G.state;
+    const checkedKing = inCheck(s, s.turn) ? findKing(s, s.turn) : null;
+    for (let i = 0; i < 64; i++) {
+      const vr = Math.floor(i / 8), vc = i % 8;
+      const r = opts.flipped() ? 7 - vr : vr;
+      const c = opts.flipped() ? 7 - vc : vc;
+      const sq = document.createElement('div');
+      sq.className = 'sq ' + ((r + c) % 2 === 0 ? 'light' : 'dark');
+      sq.tabIndex = 0;
+      sq.setAttribute('role', 'gridcell');
+      const p = s.board[r][c];
+      if (p) {
+        sq.textContent = GLYPH[p.col][p.t];
+        sq.classList.add(p.col === 'w' ? 'piece-w' : 'piece-b');
+      }
+      if (G.lastMove && ((G.lastMove.fr === r && G.lastMove.fc === c) || (G.lastMove.tr === r && G.lastMove.tc === c)))
+        sq.classList.add('lastmove');
+      if (selected && selected.r === r && selected.c === c) sq.classList.add('selected');
+      if (checkedKing && checkedKing.r === r && checkedKing.c === c) sq.classList.add('in-check');
+      const hint = legal.find(m => m.tr === r && m.tc === c);
+      if (hint) sq.classList.add(s.board[r][c] || hint.ep ? 'capture-hint' : 'move-hint');
+      const act = () => onSquare(r, c);
+      sq.addEventListener('click', act);
+      sq.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); act(); } });
+      boardEl.appendChild(sq);
+    }
+  }
+
+  return { render, clearSel: () => { selected = null; legal = []; } };
+}
+
+function renderSidePanel(rootEl, G) {
+  const fmt = arr => arr.map(p => GLYPH[p.col][p.t]).join('');
+  rootEl.querySelector('[data-cap="w"]').textContent = fmt(G.captured.w);
+  rootEl.querySelector('[data-cap="b"]').textContent = fmt(G.captured.b);
+  const sum = arr => arr.reduce((a, p) => a + VALUE[p.t], 0);
+  const dw = sum(G.captured.w) - sum(G.captured.b);
+  rootEl.querySelector('[data-score="w"]').textContent = dw > 0 ? '+' + dw : '';
+  rootEl.querySelector('[data-score="b"]').textContent = dw < 0 ? '+' + (-dw) : '';
+}
+
+function renderMoves(el, G) {
+  el.innerHTML = '';
+  for (let i = 0; i < G.moves.length; i += 2) {
+    const num = document.createElement('span');
+    num.className = 'num';
+    num.textContent = (i/2 + 1) + '.';
+    el.appendChild(num);
+    for (let j = 0; j < 2; j++) {
+      const ply = document.createElement('span');
+      ply.className = 'ply';
+      if (i + j === G.moves.length - 1) ply.classList.add('latest');
+      ply.textContent = G.moves[i+j] ? sanFr(G.moves[i+j]) : '';
+      el.appendChild(ply);
+    }
+  }
+  el.scrollTop = el.scrollHeight;
+}
+
+function renderClocks(el, G, names) {
+  el.innerHTML = '';
+  for (const col of ['b','w']) {
+    const d = document.createElement('div');
+    d.className = 'clock';
+    const t = liveClock(G, col);
+    if (G.clocks && !G.over && G.state.turn === col && G.clocks.started) d.classList.add('running');
+    if (G.clocks && t !== null && t <= 0) d.classList.add('flag');
+    d.innerHTML = '<span class="who">' + esc(names[col]) + '</span>' + fmtClock(t);
+    el.appendChild(d);
+  }
+}
+
+/* ===================== Navigation ===================== */
+let currentView = 'home';
+document.querySelectorAll('nav button').forEach(b => {
+  b.addEventListener('click', () => switchView(b.dataset.view));
+});
+function switchView(v) {
+  currentView = v;
+  document.querySelectorAll('nav button').forEach(x => x.classList.toggle('active', x.dataset.view === v));
+  document.querySelectorAll('.view').forEach(x => x.classList.remove('active'));
+  $('view-' + v).classList.add('active');
+  if (v === 'home') refreshLobby();
+  if (v === 'salon') { updateSalonBadge(0); refreshSalon(); }
+  if (v === 'dm') refreshThreads();
+  if (v === 'tournois') refreshTournois();
+  if (v === 'admin') refreshAdmin();
+}
+
+/* ============================================================
+   JEU LOCAL & IA
+============================================================ */
+let LG = null;           // partie locale
+let localFlipped = false;
+let aiWorker = null, aiBusy = false;
+let localHistory = [];
+
+function setupWorker() {
+  try {
+    aiWorker = new Worker('js/ai-worker.js');
+  } catch (e) { aiWorker = null; }
+}
+setupWorker();
+let aiToken = 0;
+function aiCompute(state, depth, fuzz) {
+  return new Promise(resolve => {
+    if (aiWorker) {
+      const token = ++aiToken;
+      const handler = e => {
+        if (!e.data || e.data.token !== token) return;
+        aiWorker.removeEventListener('message', handler);
+        resolve(e.data.move);
+      };
+      aiWorker.addEventListener('message', handler);
+      aiWorker.postMessage({ state: cloneState(state), depth, fuzz, token });
+    } else {
+      setTimeout(() => resolve(aiBestMove(cloneState(state), depth, fuzz)), 30);
+    }
+  });
+}
+
+const localBoard = BoardUI($('localBoard'), {
+  getG: () => LG,
+  flipped: () => localFlipped,
+  canPlay: color => {
+    if (aiBusy) return false;
+    const mode = $('localMode').value;
+    return mode === 'human' || color === 'w';
+  },
+  onMove: (mv, promo) => {
+    localHistory.push(JSON.parse(JSON.stringify(LG)));
+    doMove(LG, mv, promo);
+    renderLocal();
+    if (LG.over) { showEnd(LG); return; }
+    maybeLocalAI();
+  }
+});
+
+async function maybeLocalAI() {
+  const mode = $('localMode').value;
+  if (!mode.startsWith('ai') || !LG || LG.over || LG.state.turn !== 'b') return;
+  aiBusy = true;
+  renderLocal();
+  const depth = parseInt(mode.split('-')[1], 10);
+  const fuzz = depth === 2 ? 60 : depth === 3 ? 12 : 0;
+  const mv = await aiCompute(LG.state, depth, fuzz);
+  aiBusy = false;
+  if (mv && LG && !LG.over && LG.state.turn === 'b') {
+    doMove(LG, mv, 'Q');
+    renderLocal();
+    if (LG.over) showEnd(LG);
+  } else renderLocal();
+}
+
+function renderLocal() {
+  if (!LG) return;
+  localBoard.render();
+  renderSidePanel($('view-local'), LG);
+  renderMoves($('localMoves'), LG);
+  renderClocks($('localClocks'), LG, { w: 'Blancs', b: 'Noirs' });
+  const st = $('localStatus');
+  if (LG.over) st.innerHTML = '<strong>' + esc(LG.over.title) + '.</strong> ' + esc(LG.over.detail);
+  else {
+    const colDot = LG.state.turn === 'w' ? '#faf6ec' : '#1c1611';
+    const name = LG.state.turn === 'w' ? 'Trait aux Blancs' : 'Trait aux Noirs';
+    const chk = inCheck(LG.state, LG.state.turn) ? ' — <strong style="color:var(--check)">Échec !</strong>' : '';
+    const think = aiBusy ? ' <em class="small">(l\u2019ordinateur réfléchit…)</em>' : '';
+    st.innerHTML = '<span class="turn-dot" style="background:' + colDot + '"></span>' + name + chk + think;
+  }
+  $('btnLocalUndo').disabled = localHistory.length === 0 || aiBusy;
+}
+
+function localNew() {
+  const tcv = $('localTc').value;
+  const tc = tcv === 'inf' ? null : { base: +tcv.split('|')[0], inc: +tcv.split('|')[1] };
+  LG = newG(tc);
+  localHistory = [];
+  aiBusy = false;
+  $('endOverlay').classList.remove('show');
+  localBoard.clearSel();
+  renderLocal();
+}
+$('btnLocalNew').addEventListener('click', localNew);
+$('btnLocalFlip').addEventListener('click', () => { localFlipped = !localFlipped; renderLocal(); });
+$('btnLocalUndo').addEventListener('click', () => {
+  if (!localHistory.length || aiBusy) return;
+  const vsAi = $('localMode').value.startsWith('ai');
+  LG = localHistory.pop();
+  if (vsAi && LG.state.turn === 'b' && localHistory.length) LG = localHistory.pop();
+  $('endOverlay').classList.remove('show');
+  localBoard.clearSel();
+  renderLocal();
+});
+$('btnLocalPgn').addEventListener('click', () => {
+  if (!LG || !LG.moves.length) return;
+  const mode = $('localMode').value;
+  exportPGN(LG, 'Joueur Blancs', mode.startsWith('ai') ? 'Ordinateur' : 'Joueur Noirs', 'Partie locale');
+});
+$('localMode').addEventListener('change', maybeLocalAI);
+
+/* Pendule locale : tic + chute du drapeau */
+setInterval(() => {
+  if (currentView === 'local' && LG && LG.clocks && LG.clocks.started && !LG.over) {
+    renderClocks($('localClocks'), LG, { w: 'Blancs', b: 'Noirs' });
+    const turn = LG.state.turn;
+    if (liveClock(LG, turn) <= 0) {
+      const winner = turn === 'w' ? 'Les Noirs' : 'Les Blancs';
+      finishG(LG, turn === 'w' ? '0-1' : '1-0', 'Temps écoulé', winner + ' gagnent au temps.', 'temps');
+      renderLocal(); showEnd(LG);
+    }
+  }
+}, 250);
+
+localNew();
+
+/* ============================================================
+   COUCHE EN LIGNE — profil, présence, lobby
+============================================================ */
+let pseudo = null;
+let bannedCache = [];   // liste des pseudos suspendus, rafraîchie par heartbeat
+
+if (!HAS_STORAGE) $('offlineBanner').classList.add('show');
+
+/* ============================================================
+   AUTHENTIFICATION & BASE DE DONNÉES JSON
+   Base : clé partagée 'db:users' (tableau JSON)
+   Schéma utilisateur :
+   { id, pseudo, email, provider: 'local'|'google'|'facebook',
+     passHash, salt (comptes locaux), createdAt,
+     stats: { w: victoires, l: défaites, d: nulles } }
+   ⚠️ Prototype pédagogique : le stockage est partagé et lisible.
+   En production : backend (PHP/Node), bcrypt/argon2 côté serveur,
+   et OAuth réel (Google Identity Services, Facebook Login).
+============================================================ */
+let currentUser = null;     // enregistrement du compte connecté (null = invité)
+let authMode = 'login';     // 'login' | 'register'
+let ssoProvider = null;
+
+const DB_USERS = 'db:users';
+const uid = () => 'u' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+const validEmail = e => /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(e);
+const cleanPseudo = v => v.trim().replace(/[^a-zA-Z0-9_\-]/g, '').slice(0, 16);
+const newSalt = () => Math.random().toString(36).slice(2) + Date.now().toString(36);
+
+/* Appel à l'endpoint d'authentification serveur (mode PHP uniquement). */
+async function apiAuth(action, payload) {
+  const res = await fetch('api/auth.php', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    credentials: 'same-origin',
+    body: JSON.stringify(Object.assign({ action }, payload || {}))
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok || !data.ok) throw new Error((data && data.error) || ('HTTP ' + res.status));
+  return data;
+}
+
+/* Liste des comptes : serveur (champs publics) en mode PHP, base JSON sinon. */
+async function dbUsers() {
+  if (USE_PHP) { try { return (await apiAuth('list')).users || []; } catch (e) { return []; } }
+  return (await sget(DB_USERS)) || [];
+}
+async function dbSaveUsers(list) {
+  if (USE_PHP) return;                 // en mode serveur, les écritures passent par api/auth.php
+  await sset(DB_USERS, list.slice(0, 300));
+}
+
+async function hashPass(salt, pass) {
+  const txt = salt + '::' + pass;
+  if (window.crypto && crypto.subtle) {
+    try {
+      const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(txt));
+      return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2, '0')).join('');
+    } catch (e) { /* repli ci-dessous */ }
+  }
+  let h = 5381;
+  for (let i = 0; i < txt.length; i++) h = ((h << 5) + h + txt.charCodeAt(i)) >>> 0;
+  return 'djb2_' + h.toString(16);
+}
+
+function refreshProfileUI() {
+  if (pseudo && currentUser) {
+    const s = currentUser.stats || { w:0, l:0, d:0 };
+    const prov = currentUser.provider === 'google' ? ' · via Google' :
+                 currentUser.provider === 'facebook' ? ' · via Facebook' : '';
+    const role = currentUser.role === 'admin' ? ' <span class="role-badge">ADMIN</span>' : '';
+    $('profileLine').innerHTML = 'Connecté : <strong class="pseudo-tag">' + esc(pseudo) + '</strong>' + role + ' ' +
+      '<span class="small">(' + esc(currentUser.email || '—') + prov + ') · ' +
+      s.w + ' V / ' + s.l + ' D / ' + s.d + ' N</span>';
+    $('btnAuth').style.display = 'none';
+    $('btnLogout').style.display = '';
+    $('btnExportDb').style.display = '';
+  } else if (pseudo) {
+    $('profileLine').innerHTML = 'Invité : <strong class="pseudo-tag">' + esc(pseudo) + '</strong> ' +
+      '<span class="small">(crée un compte pour conserver tes statistiques)</span>';
+    $('btnAuth').style.display = '';
+    $('btnAuth').textContent = 'Créer un compte / Connexion';
+    $('btnLogout').style.display = '';
+    $('btnExportDb').style.display = 'none';
+  } else {
+    $('profileLine').textContent = 'Connecte-toi pour accéder aux fonctions en ligne.';
+    $('btnAuth').style.display = '';
+    $('btnAuth').textContent = 'Connexion / Créer un compte';
+    $('btnLogout').style.display = 'none';
+    $('btnExportDb').style.display = 'none';
+  }
+  $('navAdmin').style.display = (currentUser && currentUser.role === 'admin') ? '' : 'none';
+}
+
+function requirePseudo() {
+  if (!HAS_STORAGE) { alert('Stockage partagé indisponible dans cet environnement.'); return false; }
+  if (!pseudo) { openAuth(); return false; }
+  if (bannedCache.indexOf(pseudo) >= 0) { alert('Ton compte est suspendu par l\u2019administration.'); return false; }
+  return true;
+}
+
+function openAuth() {
+  $('ssoStep').style.display = 'none';
+  $('authForm').style.display = '';
+  $('authSso').style.display = '';
+  setAuthMode('login');
+  $('authOverlay').classList.add('show');
+  setTimeout(() => $('authPseudo').focus(), 60);
+}
+function setAuthMode(m) {
+  authMode = m;
+  $('tabLogin').classList.toggle('active', m === 'login');
+  $('tabRegister').classList.toggle('active', m === 'register');
+  $('fEmail').style.display = m === 'register' ? '' : 'none';
+  $('authPseudoLabel').textContent = m === 'register' ? 'Pseudo (2–16 car. : lettres, chiffres, - _)' : 'Pseudo ou e-mail';
+  $('authSubmit').textContent = m === 'register' ? 'Créer mon compte' : 'Se connecter';
+  $('authMsg').textContent = '';
+}
+$('tabLogin').addEventListener('click', () => setAuthMode('login'));
+$('tabRegister').addEventListener('click', () => setAuthMode('register'));
+$('btnAuth').addEventListener('click', () => { if (HAS_STORAGE) openAuth(); });
+$('authClose').addEventListener('click', () => $('authOverlay').classList.remove('show'));
+
+async function finishLogin(user) {
+  currentUser = user;
+  pseudo = user.pseudo;
+  await sset('session', { userId: user.id, pseudo: user.pseudo, ts: Date.now() }, false);
+  $('authOverlay').classList.remove('show');
+  $('authPass').value = '';
+  refreshProfileUI();
+  heartbeat();
+  refreshThreads();
+  refreshLobby();
+}
+
+async function authSubmitAction() {
+  const msg = $('authMsg');
+  msg.textContent = '';
+  const pass = $('authPass').value;
+  if (authMode === 'register') {
+    const email = $('authEmail').value.trim().toLowerCase();
+    const ps = cleanPseudo($('authPseudo').value);
+    if (!validEmail(email)) { msg.textContent = 'Adresse e-mail invalide.'; return; }
+    if (ps.length < 2) { msg.textContent = 'Pseudo : 2 à 16 caractères (lettres, chiffres, - _).'; return; }
+    if (pass.length < 6) { msg.textContent = 'Mot de passe : 6 caractères minimum.'; return; }
+    if (USE_PHP) {
+      try { const r = await apiAuth('register', { pseudo: ps, email, password: pass }); await finishLogin(r.user); }
+      catch (e) { msg.textContent = e.message; }
+      return;
+    }
+    const users = await dbUsers();
+    if (users.some(u => u.pseudo.toLowerCase() === ps.toLowerCase())) { msg.textContent = 'Ce pseudo est déjà pris.'; return; }
+    if (users.some(u => u.email === email)) { msg.textContent = 'Un compte existe déjà avec cet e-mail.'; return; }
+    const salt = newSalt();
+    const user = {
+      id: uid(), pseudo: ps, email, provider: 'local',
+      role: users.length === 0 ? 'admin' : 'user',
+      salt, passHash: await hashPass(salt, pass),
+      createdAt: Date.now(), stats: { w:0, l:0, d:0 }
+    };
+    users.push(user);
+    await dbSaveUsers(users);
+    await finishLogin(user);
+  } else {
+    const idf = $('authPseudo').value.trim();
+    if (!idf || !pass) { msg.textContent = 'Renseigne ton identifiant et ton mot de passe.'; return; }
+    if (USE_PHP) {
+      try { const r = await apiAuth('login', { identifiant: idf, password: pass }); await finishLogin(r.user); }
+      catch (e) { msg.textContent = e.message; }
+      return;
+    }
+    const users = await dbUsers();
+    const user = users.find(u => u.pseudo.toLowerCase() === idf.toLowerCase() ||
+                                 (u.email && u.email === idf.toLowerCase()));
+    if (!user) { msg.textContent = 'Compte introuvable.'; return; }
+    if (user.banned) { msg.textContent = 'Compte suspendu par l\u2019administration.'; return; }
+    if (user.provider !== 'local') { msg.textContent = 'Ce compte utilise la connexion ' + user.provider + ' (bouton ci-dessus).'; return; }
+    const h = await hashPass(user.salt, pass);
+    if (h !== user.passHash) { msg.textContent = 'Mot de passe incorrect.'; return; }
+    await finishLogin(user);
+  }
+}
+$('authSubmit').addEventListener('click', authSubmitAction);
+$('authPass').addEventListener('keydown', e => { if (e.key === 'Enter') authSubmitAction(); });
+
+/* -------- SSO simulé (Google / Facebook) -------- */
+function openSso(provider) {
+  ssoProvider = provider;
+  $('authForm').style.display = 'none';
+  $('authSso').style.display = 'none';
+  $('ssoStep').style.display = '';
+  $('ssoMsg').textContent = '';
+  const site = provider === 'google' ? 'accounts.google.com' : 'facebook.com';
+  const nom = provider === 'google' ? 'Google' : 'Facebook';
+  $('ssoTitle').innerHTML = '🔐 <strong>Simulation</strong> de l\u2019écran de consentement ' + nom +
+    ' — en production, cette étape se déroule sur <em>' + site + '</em> et renvoie un jeton vérifié par le serveur.';
+  setTimeout(() => $('ssoEmail').focus(), 60);
+}
+$('ssoGoogle').addEventListener('click', () => openSso('google'));
+$('ssoFacebook').addEventListener('click', () => openSso('facebook'));
+$('ssoBack').addEventListener('click', () => {
+  $('ssoStep').style.display = 'none';
+  $('authForm').style.display = '';
+  $('authSso').style.display = '';
+});
+async function ssoOkAction() {
+  const msg = $('ssoMsg');
+  msg.textContent = '';
+  const email = $('ssoEmail').value.trim().toLowerCase();
+  if (!validEmail(email)) { msg.textContent = 'Adresse e-mail invalide.'; return; }
+  const name = cleanPseudo($('ssoName').value) || cleanPseudo(email.split('@')[0]);
+  if (name.length < 2) { msg.textContent = 'Choisis un nom affiché (2 caractères minimum).'; return; }
+  if (USE_PHP) {
+    try { const r = await apiAuth('ssoLogin', { provider: ssoProvider, email, pseudo: name }); await finishLogin(r.user); }
+    catch (e) { msg.textContent = e.message; }
+    return;
+  }
+  const users = await dbUsers();
+  let user = users.find(u => u.email === email && u.provider === ssoProvider);
+  if (!user) {
+    if (users.some(u => u.pseudo.toLowerCase() === name.toLowerCase())) { msg.textContent = 'Ce pseudo est déjà pris — choisis-en un autre.'; return; }
+    if (users.some(u => u.email === email)) { msg.textContent = 'Cet e-mail est déjà associé à un compte ' + (users.find(u => u.email === email).provider) + '.'; return; }
+    user = { id: uid(), pseudo: name, email, provider: ssoProvider, role: users.length === 0 ? 'admin' : 'user', createdAt: Date.now(), stats: { w:0, l:0, d:0 } };
+    users.push(user);
+    await dbSaveUsers(users);
+  }
+  if (user.banned) { msg.textContent = 'Compte suspendu par l\u2019administration.'; return; }
+  await finishLogin(user);
+}
+$('ssoOk').addEventListener('click', ssoOkAction);
+$('ssoName').addEventListener('keydown', e => { if (e.key === 'Enter') ssoOkAction(); });
+
+/* -------- Invité -------- */
+$('authGuest').addEventListener('click', async () => {
+  const ps = cleanPseudo($('authPseudo').value) || ('Invite_' + Math.random().toString(36).slice(2, 6));
+  pseudo = ps;
+  currentUser = null;
+  await sset('session', { guest: true, pseudo: ps, ts: Date.now() }, false);
+  $('authOverlay').classList.remove('show');
+  refreshProfileUI();
+  heartbeat();
+  refreshThreads();
+});
+
+/* -------- Déconnexion -------- */
+$('btnLogout').addEventListener('click', async () => {
+  if (USE_PHP) { try { await apiAuth('logout'); } catch (e) { /* ignore */ } }
+  pseudo = null;
+  currentUser = null;
+  await sset('session', { ts: Date.now() }, false);
+  refreshProfileUI();
+  refreshLobby();
+});
+
+/* -------- Session (reconnexion automatique) -------- */
+async function loadSession() {
+  if (USE_PHP) {
+    try {
+      const r = await apiAuth('me');
+      if (r.user) { currentUser = r.user; pseudo = r.user.pseudo; refreshProfileUI(); return; }
+    } catch (e) { /* non connecté côté serveur */ }
+    const g = await sget('session', false);            // invité éventuel (pseudo client)
+    if (g && g.guest && g.pseudo) pseudo = g.pseudo;
+    refreshProfileUI();
+    return;
+  }
+  const sess = await sget('session', false);
+  if (sess && sess.pseudo) {
+    if (sess.guest) { pseudo = sess.pseudo; refreshProfileUI(); return; }
+    const users = await dbUsers();
+    const u = users.find(x => x.id === sess.userId);
+    if (u) { currentUser = u; pseudo = u.pseudo; refreshProfileUI(); return; }
+  }
+  // Rétro-compatibilité : ancien profil simple → invité
+  const old = await sget('profile', false);
+  if (old && old.pseudo) pseudo = old.pseudo;
+  refreshProfileUI();
+}
+
+/* -------- Statistiques V/D/N -------- */
+async function recordResultOnce(R) {
+  if (!currentUser || !R || R.status !== 'finished' || !R.result) return;
+  const amWhite = R.white === pseudo, amBlack = R.black === pseudo;
+  if (!amWhite && !amBlack) return;
+  const outcome = R.result === '1/2-1/2' ? 'd'
+    : ((R.result === '1-0' && amWhite) || (R.result === '0-1' && amBlack)) ? 'w' : 'l';
+  if (USE_PHP) {
+    try {
+      const r = await apiAuth('recordResult', { gameId: R.id, outcome });
+      if (r.stats) { currentUser.stats = r.stats; refreshProfileUI(); }
+    } catch (e) { /* best effort */ }
+    return;
+  }
+  if (await sget('statrec:' + R.id, false)) return;   // déjà comptabilisé
+  await sset('statrec:' + R.id, { done: 1 }, false);
+  const users = await dbUsers();
+  const u = users.find(x => x.id === currentUser.id);
+  if (!u) return;
+  u.stats = u.stats || { w:0, l:0, d:0 };
+  if (outcome === 'd') u.stats.d++; else if (outcome === 'w') u.stats.w++; else u.stats.l++;
+  await dbSaveUsers(users);
+  currentUser = u;
+  refreshProfileUI();
+}
+
+/* -------- Export de la base au format JSON -------- */
+$('btnExportDb').addEventListener('click', async () => {
+  const users = await dbUsers();
+  const safe = users.map(u => ({
+    id: u.id, pseudo: u.pseudo, email: u.email, provider: u.provider,
+    createdAt: u.createdAt, stats: u.stats
+  })); // hachages et sels exclus volontairement
+  const data = { base: 'le-cercle', version: 1, exportee_le: new Date().toISOString(), utilisateurs: safe };
+  const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'le-cercle-users.json';
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(a.href), 4000);
+});
+
+/* Présence : clé partagée unique, lecture-modification-écriture */
+async function heartbeat() {
+  if (!pseudo || !HAS_STORAGE) return;
+  bannedCache = USE_PHP
+    ? (await dbUsers()).filter(u => u.banned).map(u => u.pseudo)
+    : ((await sget('db:banned')) || []);
+  const pres = (await sget('presence')) || {};
+  pres[pseudo] = Date.now();
+  for (const k of Object.keys(pres)) if (Date.now() - pres[k] > 180000) delete pres[k];
+  await sset('presence', pres);
+}
+setInterval(heartbeat, 25000);
+
+async function onlinePlayers() {
+  const pres = (await sget('presence')) || {};
+  const now = Date.now();
+  return Object.keys(pres).filter(k => now - pres[k] < 70000).sort();
+}
+
+/* -------- Lobby : index des parties -------- */
+async function readIndex() { return (await sget('gamesindex')) || []; }
+async function writeIndex(list) {
+  const now = Date.now();
+  list = list.filter(g => !(g.status === 'finished' && now - g.ts > 7200000)).slice(-30);
+  await sset('gamesindex', list);
+}
+
+async function refreshLobby() {
+  if (!HAS_STORAGE) return;
+  // Joueurs
+  const players = await onlinePlayers();
+  const pl = $('playersList');
+  pl.innerHTML = '';
+  for (const p of players) {
+    const item = document.createElement('div');
+    item.className = 'item';
+    item.innerHTML = '<span><span class="dot"></span>' + esc(p) + (p === pseudo ? ' <span class="small">(moi)</span>' : '') + '</span>';
+    if (p !== pseudo && pseudo) {
+      const b = document.createElement('button');
+      b.textContent = '✉️';
+      b.title = 'Message privé';
+      b.addEventListener('click', () => { openThread(p); switchView('dm'); });
+      item.appendChild(b);
+    }
+    pl.appendChild(item);
+  }
+  // Parties
+  const idx = await readIndex();
+  const open = $('openGames'), live = $('liveGames');
+  open.innerHTML = ''; live.innerHTML = '';
+  const rev = idx.slice().reverse();
+  for (const g of rev) {
+    const tcTxt = g.tc ? (g.tc.base/60) + ' min' + (g.tc.inc ? ' + ' + g.tc.inc + ' s' : '') : 'sans pendule';
+    if (g.status === 'open') {
+      const item = document.createElement('div');
+      item.className = 'item';
+      const creator = g.white || g.black;
+      item.innerHTML = '<span>♟ <strong>' + esc(creator) + '</strong> <span class="small">— ' + tcTxt + '</span></span>';
+      const b = document.createElement('button');
+      if (creator === pseudo) {
+        b.textContent = 'Reprendre';
+        b.addEventListener('click', () => enterOnlineGame(g.id));
+      } else {
+        b.className = 'primary';
+        b.textContent = 'Rejoindre';
+        b.addEventListener('click', () => joinGame(g.id));
+      }
+      item.appendChild(b);
+      open.appendChild(item);
+    } else if (g.status === 'playing') {
+      const item = document.createElement('div');
+      item.className = 'item';
+      item.innerHTML = '<span>⚔ <strong>' + esc(g.white) + '</strong> vs <strong>' + esc(g.black) + '</strong> <span class="small">— ' + tcTxt + '</span></span>';
+      const b = document.createElement('button');
+      const mine = pseudo && (g.white === pseudo || g.black === pseudo);
+      b.textContent = mine ? 'Reprendre' : '👁 Regarder';
+      b.addEventListener('click', () => enterOnlineGame(g.id));
+      item.appendChild(b);
+      live.appendChild(item);
+    }
+  }
+}
+setInterval(() => { if (currentView === 'home' && !document.hidden) refreshLobby(); }, 5000);
+
+/* -------- Création / rejoindre -------- */
+$('btnCreateGame').addEventListener('click', async () => {
+  if (!requirePseudo()) return;
+  const tcv = $('newTc').value;
+  const tc = tcv === 'inf' ? null : { base: +tcv.split('|')[0], inc: +tcv.split('|')[1] };
+  let colorPick = $('newColor').value;
+  if (colorPick === 'random') colorPick = Math.random() < 0.5 ? 'w' : 'b';
+  const id = 'g' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+  const R = {
+    id, status: 'open', tc,
+    white: colorPick === 'w' ? pseudo : null,
+    black: colorPick === 'b' ? pseudo : null,
+    G: newG(tc),
+    drawOffer: null, result: null, reason: null,
+    ts: Date.now()
+  };
+  await sset('game:' + id, R);
+  const idx = await readIndex();
+  idx.push({ id, status: 'open', white: R.white, black: R.black, tc, ts: Date.now() });
+  await writeIndex(idx);
+  enterOnlineGame(id);
+});
+
+async function joinGame(id) {
+  if (!requirePseudo()) return;
+  const R = await sget('game:' + id);
+  if (!R || R.status !== 'open') { refreshLobby(); return; }
+  if (R.white === pseudo || R.black === pseudo) { enterOnlineGame(id); return; }
+  if (!R.white) R.white = pseudo; else R.black = pseudo;
+  R.status = 'playing';
+  if (R.G.clocks) { R.G.clocks.lastTs = Date.now(); R.G.clocks.started = true; }
+  R.ts = Date.now();
+  await sset('game:' + id, R);
+  const idx = await readIndex();
+  const e = idx.find(g => g.id === id);
+  if (e) { e.status = 'playing'; e.white = R.white; e.black = R.black; e.ts = Date.now(); }
+  await writeIndex(idx);
+  await appendGameChat(id, { sys: true, text: pseudo + ' a rejoint la partie. Que le meilleur gagne !' });
+  enterOnlineGame(id);
+}
+
+/* ============================================================
+   PARTIE EN LIGNE — vue, synchro, commentaires
+============================================================ */
+let OR = null;           // enregistrement distant courant
+let onlineId = null;
+let onlinePoll = null;
+let lastChatLen = -1;
+
+const onlineBoard = BoardUI($('onlineBoard'), {
+  getG: () => OR ? OR.G : null,
+  flipped: () => !!(OR && pseudo && OR.black === pseudo),
+  canPlay: color => {
+    if (!OR || OR.status !== 'playing') return false;
+    return (color === 'w' && OR.white === pseudo) || (color === 'b' && OR.black === pseudo);
+  },
+  onMove: async (mv, promo) => {
+    if (!OR) return;
+    doMove(OR.G, mv, promo);
+    if (OR.G.over) {
+      OR.status = 'finished';
+      OR.result = OR.G.over.result;
+      OR.reason = OR.G.over.reason;
+    }
+    OR.drawOffer = null;
+    OR.ts = Date.now();
+    renderOnline();
+    await sset('game:' + onlineId, OR);
+    if (OR.status === 'finished') {
+      await updateIndexStatus(onlineId, 'finished', OR.result);
+      showEnd(OR.G);
+    }
+  }
+});
+
+async function updateIndexStatus(id, status, result) {
+  const idx = await readIndex();
+  const e = idx.find(g => g.id === id);
+  if (e) { e.status = status; if (result) e.result = result; e.ts = Date.now(); }
+  await writeIndex(idx);
+}
+
+function enterOnlineGame(id) {
+  onlineId = id;
+  OR = null;
+  lastChatLen = -1;
+  $('gameChatLog').innerHTML = '';
+  switchView('online');
+  $('onlineEmpty').style.display = 'none';
+  $('onlineGameUI').style.display = '';
+  syncOnline(true);
+  if (onlinePoll) clearInterval(onlinePoll);
+  onlinePoll = setInterval(() => { if (!document.hidden) syncOnline(); }, 2500);
+}
+
+$('btnOnlineLeave').addEventListener('click', () => {
+  if (onlinePoll) clearInterval(onlinePoll);
+  onlinePoll = null; OR = null; onlineId = null;
+  $('onlineGameUI').style.display = 'none';
+  $('onlineEmpty').style.display = '';
+  switchView('home');
+});
+
+async function syncOnline(first) {
+  if (!onlineId) return;
+  const R = await sget('game:' + onlineId);
+  if (!R) return;
+  const localMoves = OR ? OR.G.moves.length : -1;
+  const meToMove = OR && OR.status === 'playing' &&
+    ((OR.G.state.turn === 'w' && OR.white === pseudo) || (OR.G.state.turn === 'b' && OR.black === pseudo));
+  // On adopte la version distante si elle a avancé, ou si ce n'est pas à nous de jouer
+  if (first || R.G.moves.length > localMoves || !meToMove || (OR && R.status !== OR.status)) {
+    const wasFinished = OR && OR.status === 'finished';
+    OR = R;
+    onlineBoard.clearSel();
+    renderOnline();
+    if (!first && R.G.moves.length > Math.max(localMoves, 0)) tinySound();
+    if (!first && R.status === 'finished' && !wasFinished) showEnd(R.G);
+  }
+  if (R.status === 'finished') recordResultOnce(R);
+  await syncGameChat();
+}
+
+function renderOnline() {
+  if (!OR) return;
+  onlineBoard.render();
+  renderSidePanel($('view-online'), OR.G);
+  renderMoves($('onlineMoves'), OR.G);
+  renderClocks($('onlineClocks'), OR.G, { w: OR.white || '— attente —', b: OR.black || '— attente —' });
+  const tcTxt = OR.tc ? (OR.tc.base/60) + ' min' + (OR.tc.inc ? ' + ' + OR.tc.inc + ' s' : '') : 'sans pendule';
+  $('onlineTitle').textContent = (OR.white || '?') + ' vs ' + (OR.black || '?') + ' — ' + tcTxt;
+  const st = $('onlineStatus');
+  const spectator = pseudo !== OR.white && pseudo !== OR.black;
+  if (OR.status === 'open') {
+    st.innerHTML = '⏳ En attente d\u2019un adversaire… <span class="small">Partage le défi via le salon !</span>';
+  } else if (OR.status === 'finished') {
+    st.innerHTML = '<strong>' + esc(OR.G.over ? OR.G.over.title : 'Partie terminée') + '.</strong> ' +
+      esc(OR.G.over ? OR.G.over.detail : '') + ' (' + (OR.result || '') + ')';
+  } else {
+    const colDot = OR.G.state.turn === 'w' ? '#faf6ec' : '#1c1611';
+    const name = OR.G.state.turn === 'w' ? esc(OR.white) : esc(OR.black);
+    const me = (OR.G.state.turn === 'w' && OR.white === pseudo) || (OR.G.state.turn === 'b' && OR.black === pseudo);
+    const chk = inCheck(OR.G.state, OR.G.state.turn) ? ' — <strong style="color:var(--check)">Échec !</strong>' : '';
+    st.innerHTML = '<span class="turn-dot" style="background:' + colDot + '"></span>Au trait : <strong>' + name + '</strong>' +
+      (me ? ' (à toi !)' : '') + chk + (spectator ? ' <span class="small">· mode spectateur</span>' : '');
+    if (OR.drawOffer && OR.drawOffer !== pseudo && !spectator) {
+      st.innerHTML += '<div style="margin-top:8px"><span class="small">' + esc(OR.drawOffer) +
+        ' propose la nulle :</span> <button id="acceptDraw" class="primary" style="padding:4px 10px; font-size:13px">Accepter ½-½</button></div>';
+      const b = $('acceptDraw');
+      if (b) b.addEventListener('click', acceptDraw);
+    } else if (OR.drawOffer === pseudo) {
+      st.innerHTML += '<div class="small" style="margin-top:6px">Proposition de nulle envoyée…</div>';
+    }
+  }
+  const isPlayer = pseudo && (OR.white === pseudo || OR.black === pseudo);
+  $('btnResign').disabled = !isPlayer || OR.status !== 'playing';
+  $('btnDraw').disabled = !isPlayer || OR.status !== 'playing' || OR.drawOffer === pseudo;
+}
+
+/* Pendule en ligne : tic + chute */
+setInterval(async () => {
+  if (currentView !== 'online' || !OR || OR.status !== 'playing' || !OR.G.clocks || !OR.G.clocks.started) return;
+  renderClocks($('onlineClocks'), OR.G, { w: OR.white, b: OR.black });
+  const turn = OR.G.state.turn;
+  if (liveClock(OR.G, turn) <= 0) {
+    const isPlayer = pseudo === OR.white || pseudo === OR.black;
+    if (!isPlayer) return; // un joueur écrit le résultat
+    const winner = turn === 'w' ? OR.black : OR.white;
+    finishG(OR.G, turn === 'w' ? '0-1' : '1-0', 'Temps écoulé', winner + ' gagne au temps.', 'temps');
+    OR.status = 'finished'; OR.result = OR.G.over.result; OR.reason = 'temps'; OR.ts = Date.now();
+    renderOnline();
+    await sset('game:' + onlineId, OR);
+    await updateIndexStatus(onlineId, 'finished', OR.result);
+    showEnd(OR.G);
+  }
+}, 300);
+
+$('btnResign').addEventListener('click', async () => {
+  if (!OR || OR.status !== 'playing') return;
+  const ok = await askConfirm('Abandonner ?', 'La partie sera comptée perdue.');
+  if (!ok) return;
+  const meWhite = OR.white === pseudo;
+  const winner = meWhite ? OR.black : OR.white;
+  finishG(OR.G, meWhite ? '0-1' : '1-0', 'Abandon', pseudo + ' abandonne. ' + winner + ' gagne.', 'abandon');
+  OR.status = 'finished'; OR.result = OR.G.over.result; OR.reason = 'abandon'; OR.ts = Date.now();
+  renderOnline();
+  await sset('game:' + onlineId, OR);
+  await updateIndexStatus(onlineId, 'finished', OR.result);
+  await appendGameChat(onlineId, { sys: true, text: pseudo + ' abandonne la partie.' });
+  showEnd(OR.G);
+});
+
+$('btnDraw').addEventListener('click', async () => {
+  if (!OR || OR.status !== 'playing') return;
+  OR.drawOffer = pseudo; OR.ts = Date.now();
+  renderOnline();
+  await sset('game:' + onlineId, OR);
+  await appendGameChat(onlineId, { sys: true, text: pseudo + ' propose la nulle.' });
+});
+async function acceptDraw() {
+  if (!OR) return;
+  finishG(OR.G, '1/2-1/2', 'Partie nulle', 'Nulle par accord mutuel.', 'accord');
+  OR.status = 'finished'; OR.result = '1/2-1/2'; OR.reason = 'accord'; OR.drawOffer = null; OR.ts = Date.now();
+  renderOnline();
+  await sset('game:' + onlineId, OR);
+  await updateIndexStatus(onlineId, 'finished', OR.result);
+  await appendGameChat(onlineId, { sys: true, text: 'Nulle acceptée. ½–½' });
+  showEnd(OR.G);
+}
+
+$('btnOnlinePgn').addEventListener('click', () => {
+  if (OR && OR.G.moves.length) exportPGN(OR.G, OR.white || '?', OR.black || '?', 'Partie en ligne — Le Cercle');
+});
+
+/* -------- Commentaires en direct sur la partie -------- */
+async function appendGameChat(id, msg) {
+  const log = (await sget('gamechat:' + id)) || [];
+  const entry = { text: msg.text, ts: Date.now() };
+  if (msg.sys) entry.sys = true; else entry.from = pseudo;
+  log.push(entry);
+  await sset('gamechat:' + id, log.slice(-80));
+}
+async function syncGameChat() {
+  if (!onlineId) return;
+  const log = (await sget('gamechat:' + onlineId)) || [];
+  if (log.length === lastChatLen) return;
+  lastChatLen = log.length;
+  renderChatLog($('gameChatLog'), log);
+}
+function renderChatLog(el, log) {
+  el.innerHTML = '';
+  for (const m of log) {
+    const d = document.createElement('div');
+    if (m.sys) {
+      d.className = 'msg sys';
+      d.textContent = '— ' + m.text;
+    } else {
+      d.className = 'msg';
+      d.innerHTML = '<span class="from' + (m.from === pseudo ? ' me' : '') + '">' + esc(m.from || '?') +
+        '</span><span class="time">' + fmtTime(m.ts) + '</span><br>' + esc(m.text);
+    }
+    el.appendChild(d);
+  }
+  el.scrollTop = el.scrollHeight;
+}
+$('gameChatSend').addEventListener('click', sendGameChat);
+$('gameChatInput').addEventListener('keydown', e => { if (e.key === 'Enter') sendGameChat(); });
+async function sendGameChat() {
+  if (!requirePseudo() || !onlineId) return;
+  const v = $('gameChatInput').value.trim();
+  if (!v) return;
+  $('gameChatInput').value = '';
+  await appendGameChat(onlineId, { text: v });
+  await syncGameChat();
+}
+
+/* ============================================================
+   SALON — discussions thématiques (plusieurs salons)
+   Modèle (stockage partagé) :
+   - db:rooms        : [{ id, nom, description, ordre, archive, creePar, creeLe }]
+   - chat:room:<id>  : messages du salon (même format que l'ancien chat:global)
+============================================================ */
+const ROOM_DEFAULT = 'general';
+let activeRoomId = ROOM_DEFAULT;
+let roomsCache = [];
+const roomKey = id => 'chat:room:' + id;
+
+/* Identifiant sûr pour une clé (sans accent/espace/slash/guillemet), unique. */
+function slugRoomId(nom, existing) {
+  let base = String(nom).toLowerCase()
+    .normalize('NFD').replace(/[̀-ͯ]/g, '')   // retire les accents
+    .replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
+  if (!base) base = 'salon';
+  let id = base, n = 2;
+  while (existing.indexOf(id) >= 0) id = base + '-' + (n++);
+  return id;
+}
+
+/* Migration idempotente : crée « Général » et récupère l'ancien chat:global. */
+let _roomsSeed = null;
+function ensureRooms() {
+  if (!_roomsSeed) _roomsSeed = (async () => {
+    const existing = await sget('db:rooms');
+    if (Array.isArray(existing) && existing.length) return;
+    const seed = [{
+      id: ROOM_DEFAULT, nom: 'Général',
+      description: 'Discussion générale du Cercle',
+      ordre: 0, archive: false, creePar: 'système', creeLe: Date.now()
+    }];
+    const legacy = await sget('chat:global');
+    if (Array.isArray(legacy) && legacy.length) {
+      await sset(roomKey(ROOM_DEFAULT), legacy.slice(-80));
+      await sdel('chat:global');
+    }
+    await sset('db:rooms', seed);
+  })();
+  return _roomsSeed;
+}
+
+/* Liste des salons, triée par ordre (migration garantie au préalable). */
+async function loadRooms() {
+  await ensureRooms();
+  const r = await sget('db:rooms');
+  roomsCache = Array.isArray(r) ? r.slice().sort((a, b) => (a.ordre || 0) - (b.ordre || 0)) : [];
+  return roomsCache;
+}
+async function saveRooms(rooms) {
+  rooms.sort((a, b) => (a.ordre || 0) - (b.ordre || 0));
+  roomsCache = rooms;
+  await sset('db:rooms', rooms);
+}
+function roomById(id) { return roomsCache.find(r => r.id === id) || null; }
+
+let salonLen = 0;
+
+/* Remplit le menu déroulant avec les salons non archivés, triés par ordre.
+   Bascule activeRoomId sur « Général » si le salon courant a disparu/été archivé. */
+function populateSalonSelector(rooms) {
+  const visible = rooms.filter(r => !r.archive);
+  if (!visible.some(r => r.id === activeRoomId))
+    activeRoomId = visible.some(r => r.id === ROOM_DEFAULT) ? ROOM_DEFAULT : (visible[0] ? visible[0].id : ROOM_DEFAULT);
+  const sel = $('salonRoomSel');
+  sel.innerHTML = '';
+  for (const r of visible) {
+    const o = document.createElement('option');
+    o.value = r.id;
+    o.textContent = r.nom;
+    if (r.id === activeRoomId) o.selected = true;
+    sel.appendChild(o);
+  }
+  const active = visible.find(r => r.id === activeRoomId);
+  $('salonDesc').textContent = active ? (active.description || '') : '';
+}
+
+async function refreshSalon() {
+  if (!HAS_STORAGE) return;
+  const rooms = await loadRooms();
+  populateSalonSelector(rooms);
+  const log = (await sget(roomKey(activeRoomId))) || [];
+  if (log.length !== salonLen) {
+    if (currentView !== 'salon' && log.length > salonLen && salonLen > 0) updateSalonBadge(log.length - salonLen);
+    salonLen = log.length;
+    renderChatLog($('salonLog'), log);
+  }
+  const players = await onlinePlayers();
+  $('salonOnline').textContent = '· ' + players.length + ' en ligne';
+}
+function updateSalonBadge(n) {
+  const b = $('salonBadge');
+  if (n > 0 && currentView !== 'salon') { b.textContent = n > 9 ? '9+' : n; b.hidden = false; }
+  else b.hidden = true;
+}
+setInterval(() => { if (!document.hidden && (currentView === 'salon' || currentView === 'home')) refreshSalon(); }, 3000);
+
+/* Changement de salon : on repart d'une base propre (pas de faux badge). */
+$('salonRoomSel').addEventListener('change', e => {
+  activeRoomId = e.target.value;
+  salonLen = 0;
+  $('salonLog').innerHTML = '';
+  updateSalonBadge(0);
+  refreshSalon();
+});
+
+$('salonSend').addEventListener('click', sendSalon);
+$('salonInput').addEventListener('keydown', e => { if (e.key === 'Enter') sendSalon(); });
+async function sendSalon() {
+  if (!requirePseudo()) return;
+  const v = $('salonInput').value.trim();
+  if (!v) return;
+  $('salonInput').value = '';
+  const k = roomKey(activeRoomId);
+  const log = (await sget(k)) || [];
+  log.push({ from: pseudo, text: v, ts: Date.now() });
+  await sset(k, log.slice(-80));
+  refreshSalon();
+}
+
+/* ============================================================
+   MESSAGERIE PRIVÉE
+============================================================ */
+let dmPeer = null;
+let dmLen = -1;
+const threadKey = (a, b) => 'dm:' + [a, b].sort().join('--');
+
+async function refreshThreads() {
+  if (!HAS_STORAGE || !pseudo) return;
+  const keys = await slist('dm:');
+  const mine = keys.filter(k => k.slice(3).split('--').indexOf(pseudo) >= 0).slice(0, 12);
+  const read = (await sget('dmread', false)) || {};
+  const box = $('dmThreads');
+  box.innerHTML = '';
+  let totalUnread = 0;
+  for (const k of mine) {
+    const parts = k.slice(3).split('--');
+    const peer = parts[0] === pseudo ? (parts[1] || '(moi)') : parts[0];
+    const log = (await sget(k)) || [];
+    const last = log[log.length - 1];
+    let unread = 0;
+    for (const m of log) if (m.ts > (read[k] || 0) && m.from !== pseudo) unread++;
+    totalUnread += unread;
+    const b = document.createElement('button');
+    b.className = 'th' + (peer === dmPeer ? ' active' : '');
+    b.innerHTML = '<span><strong>' + esc(peer) + '</strong><br><span class="small">' +
+      (last ? esc(String(last.text).slice(0, 28)) : '') + '</span></span>' +
+      (unread ? '<span class="badge">' + unread + '</span>' : '');
+    b.addEventListener('click', () => openThread(peer));
+    box.appendChild(b);
+  }
+  const badge = $('dmBadge');
+  if (totalUnread > 0 && currentView !== 'dm') { badge.textContent = totalUnread > 9 ? '9+' : totalUnread; badge.hidden = false; }
+  else badge.hidden = true;
+}
+setInterval(() => { if (!document.hidden && pseudo) refreshThreads(); }, 8000);
+
+async function openThread(peer) {
+  if (!requirePseudo()) return;
+  dmPeer = peer;
+  dmLen = -1;
+  $('dmTitle').textContent = 'Conversation avec ' + peer;
+  $('dmInput').disabled = false;
+  $('dmSend').disabled = false;
+  await refreshDm();
+  refreshThreads();
+}
+async function refreshDm() {
+  if (!dmPeer || !pseudo) return;
+  const k = threadKey(pseudo, dmPeer);
+  const log = (await sget(k)) || [];
+  if (log.length !== dmLen) {
+    dmLen = log.length;
+    renderChatLog($('dmLog'), log);
+    const read = (await sget('dmread', false)) || {};
+    read[k] = Date.now();
+    await sset('dmread', read, false);
+  }
+}
+setInterval(() => { if (!document.hidden && currentView === 'dm' && dmPeer) refreshDm(); }, 3000);
+
+$('dmNewBtn').addEventListener('click', () => {
+  const v = $('dmNewPeer').value.trim().replace(/[^a-zA-Z0-9_\-]/g, '');
+  if (v.length >= 2 && v !== pseudo) { $('dmNewPeer').value = ''; openThread(v); }
+});
+$('dmSend').addEventListener('click', sendDm);
+$('dmInput').addEventListener('keydown', e => { if (e.key === 'Enter') sendDm(); });
+async function sendDm() {
+  if (!requirePseudo() || !dmPeer) return;
+  const v = $('dmInput').value.trim();
+  if (!v) return;
+  $('dmInput').value = '';
+  const k = threadKey(pseudo, dmPeer);
+  const log = (await sget(k)) || [];
+  log.push({ from: pseudo, text: v, ts: Date.now() });
+  await sset(k, log.slice(-100));
+  await refreshDm();
+}
+
+/* ============================================================
+   TOURNOIS — modèle de données et couche d'accès
+   Modèle (stockage partagé) :
+   - db:tournaments    : index léger [{ id, nom, format, cadence, statut,
+                          nbInscrits, debutLe }]
+   - tournament:<id>   : détail complet { id, nom, description, format,
+                          cadence (tc {base,inc}|null), statut, participants,
+                          rondes:[{numero, matchs:[{blanc,noir,gameId,resultat}]}],
+                          classement:[{pseudo,points,joues,victoires}],
+                          rondeCourante, creePar, creeLe }
+   Statuts : 'inscriptions' -> 'en-cours' -> 'termine'.
+============================================================ */
+const tournKey = id => 'tournament:' + id;
+
+async function loadTournaments() {
+  const t = await sget('db:tournaments');
+  return Array.isArray(t) ? t : [];
+}
+async function getTournament(id) { return await sget(tournKey(id)); }
+
+/* Met à jour (ou insère) l'entrée légère dans db:tournaments. */
+async function syncTournamentIndex(T) {
+  const list = await loadTournaments();
+  const entry = {
+    id: T.id, nom: T.nom, format: T.format, cadence: T.cadence,
+    statut: T.statut, nbInscrits: T.participants.length, debutLe: T.debutLe || null
+  };
+  const i = list.findIndex(x => x.id === T.id);
+  if (i >= 0) list[i] = entry; else list.push(entry);
+  await sset('db:tournaments', list);
+}
+
+/* Écrit le détail + resynchronise l'index. */
+async function saveTournament(T) {
+  await sset(tournKey(T.id), T);
+  await syncTournamentIndex(T);
+}
+
+/* Supprime un tournoi (détail + entrée d'index + parties liées). */
+async function deleteTournament(id) {
+  const T = await getTournament(id);
+  if (T) for (const ronde of T.rondes || []) for (const m of ronde.matchs) {
+    if (m.gameId) { await sdel('game:' + m.gameId); await sdel('gamechat:' + m.gameId); }
+  }
+  await sdel(tournKey(id));
+  const list = (await loadTournaments()).filter(x => x.id !== id);
+  await sset('db:tournaments', list);
+}
+
+/* -------- Génération round-robin (algorithme du cercle) --------
+   Renvoie n-1 rondes ; chaque joueur en rencontre un autre par ronde.
+   Nombre impair -> un joueur « exempt » (null) chaque ronde.
+   Les couleurs alternent globalement selon la parité de la ronde. */
+function genererRoundRobin(participants) {
+  const arr = participants.slice();
+  if (arr.length % 2 === 1) arr.push(null);   // joueur exempt
+  const n = arr.length;
+  const rondes = [];
+  for (let r = 0; r < n - 1; r++) {
+    const matchs = [];
+    for (let i = 0; i < n / 2; i++) {
+      const a = arr[i], b = arr[n - 1 - i];
+      if (a === null || b === null) continue;  // l'exempt ne joue pas
+      const blanc = (r % 2 === 0) ? a : b;
+      const noir  = (r % 2 === 0) ? b : a;
+      matchs.push({ blanc, noir, gameId: null, resultat: null });
+    }
+    rondes.push({ numero: r + 1, matchs });
+    arr.splice(1, 0, arr.pop());              // rotation, index 0 fixe
+  }
+  return rondes;
+}
+
+/* -------- Élimination directe (arbre) --------
+   Têtes de série par ordre d'inscription ; byes pour compléter à la puissance
+   de 2 supérieure (le bye donne une victoire immédiate). Renvoie la ronde 1. */
+function ordreBracket(size) {
+  let a = [1];
+  while (a.length < size) {
+    const m = a.length * 2 + 1;
+    const b = [];
+    for (const x of a) { b.push(x); b.push(m - x); }
+    a = b;
+  }
+  return a.map(x => x - 1);              // indices de tête de série, 0-based
+}
+function genererElimination(participants) {
+  let size = 1; while (size < participants.length) size *= 2;
+  const seeds = participants.slice();
+  while (seeds.length < size) seeds.push(null);   // byes
+  const ordre = ordreBracket(size);
+  const matchs = [];
+  for (let i = 0; i < size; i += 2) {
+    const blanc = seeds[ordre[i]], noir = seeds[ordre[i + 1]];
+    const m = { blanc, noir, gameId: null, resultat: null };
+    if (blanc && !noir) m.resultat = '1-0';        // bye
+    else if (noir && !blanc) m.resultat = '0-1';
+    matchs.push(m);
+  }
+  return [{ numero: 1, matchs }];
+}
+function vainqueurMatch(m) {
+  if (m.resultat === '1-0') return m.blanc;
+  if (m.resultat === '0-1') return m.noir;
+  if (m.blanc && !m.noir) return m.blanc;          // bye
+  if (m.noir && !m.blanc) return m.noir;
+  return null;                                     // nulle ou non joué
+}
+/* Construit la ronde suivante d'un arbre à élimination à partir des vainqueurs. */
+function rondeEliminationSuivante(T) {
+  const courante = T.rondes.find(r => r.numero === T.rondeCourante);
+  const vainqueurs = courante.matchs.map(vainqueurMatch);
+  if (vainqueurs.some(v => !v)) return { erreur: 'nulle' };   // départage requis
+  if (vainqueurs.length === 1) return { fini: true };
+  const matchs = [];
+  for (let i = 0; i < vainqueurs.length; i += 2)
+    matchs.push({ blanc: vainqueurs[i], noir: vainqueurs[i + 1], gameId: null, resultat: null });
+  return { ronde: { numero: T.rondeCourante + 1, matchs } };
+}
+
+/* -------- Système suisse --------
+   Appariement de la ronde suivante par score, sans rematch ; bye (1 pt) si
+   nombre impair, attribué au joueur le moins bien classé sans bye antérieur. */
+function aEuBye(T, pseudo) {
+  for (const r of T.rondes) for (const m of r.matchs)
+    if ((m.blanc === pseudo && !m.noir) || (m.noir === pseudo && !m.blanc)) return true;
+  return false;
+}
+function apparierSuisse(T) {
+  let joueurs = calculerClassement(T).map(c => c.pseudo);
+  const dejaJoue = new Set();
+  for (const r of T.rondes) for (const m of r.matchs)
+    if (m.blanc && m.noir) { dejaJoue.add(m.blanc + '|' + m.noir); dejaJoue.add(m.noir + '|' + m.blanc); }
+  let bye = null;
+  if (joueurs.length % 2 === 1) {
+    for (let i = joueurs.length - 1; i >= 0; i--) if (!aEuBye(T, joueurs[i])) { bye = joueurs[i]; break; }
+    if (!bye) bye = joueurs[joueurs.length - 1];
+    joueurs = joueurs.filter(p => p !== bye);
+  }
+  const matchs = [];
+  const used = new Set();
+  for (let i = 0; i < joueurs.length; i++) {
+    if (used.has(joueurs[i])) continue;
+    let adv = null;
+    for (let j = i + 1; j < joueurs.length; j++)
+      if (!used.has(joueurs[j]) && !dejaJoue.has(joueurs[i] + '|' + joueurs[j])) { adv = joueurs[j]; break; }
+    if (!adv) for (let j = i + 1; j < joueurs.length; j++)   // forcé : rematch toléré en dernier recours
+      if (!used.has(joueurs[j])) { adv = joueurs[j]; break; }
+    if (!adv) break;
+    used.add(joueurs[i]); used.add(adv);
+    matchs.push({ blanc: joueurs[i], noir: adv, gameId: null, resultat: null });
+  }
+  if (bye) matchs.push({ blanc: bye, noir: null, gameId: null, resultat: '1-0' });
+  const dernier = T.rondes.length ? T.rondes[T.rondes.length - 1].numero : 0;
+  return { numero: dernier + 1, matchs };
+}
+
+/* -------- Barème et classement --------
+   Victoire 1, nulle 0,5, défaite 0 ; bye = 1 (victoire). Tri : points, puis
+   victoires, puis pseudo. Pour l'élimination, le total de victoires ordonne
+   naturellement les joueurs par progression dans l'arbre. */
+function calculerClassement(T) {
+  const stats = {};
+  for (const p of T.participants) stats[p] = { pseudo: p, points: 0, joues: 0, victoires: 0 };
+  for (const ronde of T.rondes) for (const m of ronde.matchs) {
+    if (!m.resultat) continue;
+    if (m.blanc && !m.noir) { if (stats[m.blanc]) { stats[m.blanc].points += 1; stats[m.blanc].joues++; stats[m.blanc].victoires++; } continue; }  // bye
+    if (m.noir && !m.blanc) { if (stats[m.noir]) { stats[m.noir].points += 1; stats[m.noir].joues++; stats[m.noir].victoires++; } continue; }
+    if (!stats[m.blanc] || !stats[m.noir]) continue;
+    stats[m.blanc].joues++; stats[m.noir].joues++;
+    if (m.resultat === '1-0') { stats[m.blanc].points += 1; stats[m.blanc].victoires++; }
+    else if (m.resultat === '0-1') { stats[m.noir].points += 1; stats[m.noir].victoires++; }
+    else { stats[m.blanc].points += 0.5; stats[m.noir].points += 0.5; }
+  }
+  return Object.values(stats).sort((a, b) =>
+    b.points - a.points || b.victoires - a.victoires || a.pseudo.localeCompare(b.pseudo));
+}
+
+/* -------- Intégration avec les parties en ligne --------
+   Crée les parties d'une ronde (pré-assignées, pendule non démarrée) avec un
+   lien retour vers le tournoi. Réutilise game:<id> / gamesindex sans rien
+   modifier au moteur ni à la synchro existante. */
+async function creerPartiesRonde(T, numeroRonde) {
+  const ronde = (T.rondes || []).find(r => r.numero === numeroRonde);
+  if (!ronde) return;
+  for (let mi = 0; mi < ronde.matchs.length; mi++) {
+    const m = ronde.matchs[mi];
+    if (m.gameId || m.resultat || !m.blanc || !m.noir) continue;   // déjà créé, ou bye
+    const id = 'g' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+    const R = {
+      id, status: 'playing', tc: T.cadence,
+      white: m.blanc, black: m.noir,
+      G: newG(T.cadence),
+      drawOffer: null, result: null, reason: null, ts: Date.now(),
+      tournamentId: T.id, rondeId: numeroRonde, matchIndex: mi
+    };
+    await sset('game:' + id, R);
+    const idx = await readIndex();
+    idx.push({ id, status: 'playing', white: R.white, black: R.black, tc: T.cadence, ts: Date.now() });
+    await writeIndex(idx);
+    m.gameId = id;
+  }
+}
+
+/* Report « pull » : recopie les résultats des parties terminées dans les
+   matchs, recalcule le classement et enregistre. Renvoie true si changement. */
+async function syncResultatsTournoi(T) {
+  let change = false;
+  for (const ronde of T.rondes || []) for (const m of ronde.matchs) {
+    if (m.gameId && !m.resultat) {
+      const g = await sget('game:' + m.gameId);
+      if (g && g.status === 'finished' && g.result) { m.resultat = g.result; change = true; }
+    }
+  }
+  if (change) {
+    T.classement = calculerClassement(T);
+    await saveTournament(T);
+  }
+  return change;
+}
+
+/* ============================================================
+   ESPACE ADMINISTRATION
+   Rôle 'admin' : 1er compte créé, attribué par un autre admin,
+   ou revendiqué si aucun admin n'existe (migration).
+   ⚠️ Prototype : le stockage étant partagé et lisible, ce contrôle
+   d'accès est pédagogique — la vraie sécurité exige un backend.
+============================================================ */
+function isAdmin() { return !!(currentUser && currentUser.role === 'admin'); }
+
+async function sdel(key, shared = true) {
+  if (!HAS_STORAGE) return false;
+  try {
+    if (USE_ARTIFACT) { await window.storage.delete(key, shared); return true; }
+    const r = await apiStorage('delete', { key, shared });
+    return !!(r && r.ok);
+  } catch (e) { return false; }
+}
+
+async function adminLog(action) {
+  const log = (await sget('db:adminlog')) || [];
+  log.push({ par: pseudo, action, ts: Date.now() });
+  await sset('db:adminlog', log.slice(-50));
+}
+
+function statCard(n, label) {
+  return '<div class="stat-card"><div class="n">' + n + '</div><div class="l">' + label + '</div></div>';
+}
+function adminBtn(label, fn, cls) {
+  const b = document.createElement('button');
+  b.textContent = label;
+  if (cls) b.className = cls;
+  b.addEventListener('click', fn);
+  return b;
+}
+
+async function refreshAdmin() {
+  if (!HAS_STORAGE) return;
+  const users = await dbUsers();
+  const hasAdmin = users.some(u => u.role === 'admin');
+  $('admClaimBox').style.display = (!hasAdmin && currentUser) ? '' : 'none';
+  $('adminPanels').style.display = isAdmin() ? '' : 'none';
+  $('adminDenied').style.display = (isAdmin() || (!hasAdmin && currentUser)) ? 'none' : '';
+  if (!isAdmin()) return;
+
+  const idx = await readIndex();
+  const rooms = await loadRooms();
+  const players = await onlinePlayers();
+  const banned = (await sget('db:banned')) || [];
+
+  // Messages par salon (lecture unique réutilisée pour la stat et la modération).
+  const roomMsgs = {};
+  for (const r of rooms) roomMsgs[r.id] = (await sget(roomKey(r.id))) || [];
+  const totalMsgs = rooms.reduce((n, r) => n + roomMsgs[r.id].length, 0);
+
+  const counts = { open:0, playing:0, finished:0 };
+  for (const g of idx) if (counts[g.status] !== undefined) counts[g.status]++;
+  $('admStats').innerHTML =
+    statCard(users.length, 'Comptes') +
+    statCard(players.length, 'En ligne') +
+    statCard(counts.open, 'Défis ouverts') +
+    statCard(counts.playing, 'En cours') +
+    statCard(counts.finished, 'Terminées') +
+    statCard(totalMsgs, 'Msgs salons');
+
+  renderAdminUsers(users, banned);
+  renderAdminRooms(rooms);
+  await renderAdminTournois();
+  renderAdminGames(idx);
+  populateModRoomSelector(rooms);
+  renderAdminSalon(roomMsgs[admModRoomId] || []);
+  renderAdminLog((await sget('db:adminlog')) || []);
+}
+
+/* -------- Utilisateurs -------- */
+function renderAdminUsers(users, banned) {
+  const tb = $('admUsers');
+  tb.innerHTML = '';
+  for (const u of users) {
+    const tr = document.createElement('tr');
+    const susp = u.banned || banned.indexOf(u.pseudo) >= 0;
+    tr.innerHTML = '<td><strong>' + esc(u.pseudo) + '</strong>' +
+      (u.role === 'admin' ? ' <span class="role-badge">ADMIN</span>' : '') +
+      (susp ? ' <span class="ban-badge">SUSPENDU</span>' : '') + '</td>' +
+      '<td class="small">' + esc(u.email || '—') + '</td>' +
+      '<td class="small">' + esc(u.provider || 'local') + '</td>' +
+      '<td class="small">' + (u.stats ? u.stats.w + '/' + u.stats.l + '/' + u.stats.d : '—') + '</td>' +
+      '<td class="small">' + new Date(u.createdAt).toLocaleDateString('fr-FR') + '</td>';
+    const td = document.createElement('td');
+    td.className = 'actions';
+    td.appendChild(adminBtn(susp ? 'Réactiver' : 'Suspendre', () => toggleBan(u), susp ? '' : 'danger'));
+    td.appendChild(adminBtn(u.role === 'admin' ? 'Rétrograder' : 'Promouvoir', () => toggleRole(u)));
+    td.appendChild(adminBtn('RAZ stats', () => adminResetStats(u)));
+    td.appendChild(adminBtn('Supprimer', () => adminDeleteUser(u), 'danger'));
+    tr.appendChild(td);
+    tb.appendChild(tr);
+  }
+}
+async function persistUsers(users, action) {
+  await dbSaveUsers(users);
+  const banned = users.filter(u => u.banned).map(u => u.pseudo);
+  await sset('db:banned', banned);
+  bannedCache = banned;
+  await adminLog(action);
+  const me = users.find(x => currentUser && x.id === currentUser.id);
+  if (me) currentUser = me;
+  refreshProfileUI();
+  refreshAdmin();
+}
+/* Opération admin sur un compte via le serveur (mode PHP). */
+async function adminApply(targetId, op, action) {
+  try { await apiAuth('adminUpdate', { targetId, op }); }
+  catch (e) { alert(e.message); return; }
+  await adminLog(action);
+  if (currentUser && targetId === currentUser.id) {     // mon propre rôle a pu changer
+    try { const r = await apiAuth('me'); if (r.user) currentUser = r.user; } catch (e) { /* ignore */ }
+  }
+  refreshProfileUI();
+  refreshAdmin();
+}
+async function toggleBan(u) {
+  if (currentUser && u.id === currentUser.id) { alert('Impossible de se suspendre soi-même.'); return; }
+  if (USE_PHP) return adminApply(u.id, u.banned ? 'unban' : 'ban', (u.banned ? 'Réactivation de ' : 'Suspension de ') + u.pseudo);
+  const users = await dbUsers();
+  const t = users.find(x => x.id === u.id); if (!t) return;
+  t.banned = !t.banned;
+  await persistUsers(users, (t.banned ? 'Suspension de ' : 'Réactivation de ') + t.pseudo);
+}
+async function toggleRole(u) {
+  if (USE_PHP) {
+    const op = u.role === 'admin' ? 'demote' : 'promote';
+    return adminApply(u.id, op, 'Rôle de ' + u.pseudo + ' → ' + (op === 'promote' ? 'admin' : 'user'));
+  }
+  const users = await dbUsers();
+  const t = users.find(x => x.id === u.id); if (!t) return;
+  if (t.role === 'admin') {
+    const admins = users.filter(x => x.role === 'admin').length;
+    if (admins <= 1) { alert('Impossible de rétrograder le dernier administrateur.'); return; }
+    t.role = 'user';
+  } else t.role = 'admin';
+  await persistUsers(users, 'Rôle de ' + t.pseudo + ' \u2192 ' + t.role);
+}
+async function adminResetStats(u) {
+  if (USE_PHP) return adminApply(u.id, 'resetstats', 'RAZ des statistiques de ' + u.pseudo);
+  const users = await dbUsers();
+  const t = users.find(x => x.id === u.id); if (!t) return;
+  t.stats = { w:0, l:0, d:0 };
+  await persistUsers(users, 'RAZ des statistiques de ' + t.pseudo);
+}
+async function adminDeleteUser(u) {
+  if (currentUser && u.id === currentUser.id) { alert('Impossible de supprimer son propre compte depuis l\u2019admin.'); return; }
+  const ok = await askConfirm('Supprimer ' + u.pseudo + ' ?', 'Le compte sera retiré définitivement de la base JSON.');
+  if (!ok) return;
+  if (USE_PHP) return adminApply(u.id, 'delete', 'Suppression du compte ' + u.pseudo);
+  let users = await dbUsers();
+  users = users.filter(x => x.id !== u.id);
+  await persistUsers(users, 'Suppression du compte ' + u.pseudo);
+}
+
+/* -------- Parties -------- */
+function renderAdminGames(idx) {
+  const box = $('admGames');
+  box.innerHTML = '';
+  const rev = idx.slice().reverse();
+  for (const g of rev) {
+    const item = document.createElement('div');
+    item.className = 'item';
+    const lbl = { open:'ouverte', playing:'en cours', finished:'terminée' }[g.status] || g.status;
+    item.innerHTML = '<span class="small"><strong>' + esc(g.white || '?') + '</strong> vs <strong>' + esc(g.black || '?') +
+      '</strong> — ' + lbl + (g.result ? ' · ' + g.result : '') + '</span>';
+    const acts = document.createElement('span');
+    acts.style.display = 'flex'; acts.style.gap = '5px';
+    acts.appendChild(adminBtn('Voir', () => enterOnlineGame(g.id)));
+    if (g.status !== 'finished') acts.appendChild(adminBtn('Clore', () => adminForceFinish(g)));
+    acts.appendChild(adminBtn('Suppr.', () => adminDeleteGame(g), 'danger'));
+    item.appendChild(acts);
+    box.appendChild(item);
+  }
+}
+async function adminForceFinish(g) {
+  const ok = await askConfirm('Clore la partie ?', 'Elle sera marquée terminée (décision administrative, nulle par défaut).');
+  if (!ok) return;
+  const R = await sget('game:' + g.id);
+  if (R) {
+    R.status = 'finished'; R.result = R.result || '1/2-1/2'; R.reason = 'admin'; R.ts = Date.now();
+    if (!R.G.over) finishG(R.G, R.result, 'Partie close', 'Clôturée par l\u2019administration.', 'admin');
+    await sset('game:' + g.id, R);
+  }
+  await updateIndexStatus(g.id, 'finished', (R && R.result) || '1/2-1/2');
+  await adminLog('Clôture administrative de la partie ' + g.id);
+  refreshAdmin();
+}
+async function adminDeleteGame(g) {
+  const ok = await askConfirm('Supprimer la partie ?', 'Ses données et commentaires seront effacés.');
+  if (!ok) return;
+  let idx = await readIndex();
+  idx = idx.filter(x => x.id !== g.id);
+  await writeIndex(idx);
+  await sdel('game:' + g.id);
+  await sdel('gamechat:' + g.id);
+  await adminLog('Suppression de la partie ' + g.id);
+  refreshAdmin();
+}
+
+/* -------- Gestion des salons -------- */
+function renderAdminRooms(rooms) {
+  const tb = $('admRooms');
+  tb.innerHTML = '';
+  rooms.forEach((r, i) => {
+    const tr = document.createElement('tr');
+    tr.innerHTML =
+      '<td class="small">' + (r.ordre != null ? r.ordre : i) + '</td>' +
+      '<td><strong>' + esc(r.nom) + '</strong>' + (r.id === ROOM_DEFAULT ? ' <span class="role-badge">DÉFAUT</span>' : '') + '</td>' +
+      '<td class="small">' + esc(r.description || '—') + '</td>' +
+      '<td class="small">' + (r.archive ? '<span class="ban-badge">ARCHIVÉ</span>' : 'Actif') + '</td>';
+    const td = document.createElement('td');
+    td.className = 'actions';
+    td.appendChild(adminBtn('↑', () => moveRoom(r.id, -1)));
+    td.appendChild(adminBtn('↓', () => moveRoom(r.id, 1)));
+    td.appendChild(adminBtn('Renommer', () => renameRoom(r.id)));
+    if (r.id !== ROOM_DEFAULT) {
+      td.appendChild(adminBtn(r.archive ? 'Désarchiver' : 'Archiver', () => toggleArchiveRoom(r.id)));
+      td.appendChild(adminBtn('Supprimer', () => deleteRoom(r.id), 'danger'));
+    }
+    tr.appendChild(td);
+    tb.appendChild(tr);
+  });
+}
+
+/* Nom unique (insensible à la casse), en ignorant éventuellement un salon. */
+function roomNameTaken(nom, exceptId) {
+  const n = nom.trim().toLowerCase();
+  return roomsCache.some(r => r.id !== exceptId && r.nom.trim().toLowerCase() === n);
+}
+
+$('admRoomCreate').addEventListener('click', async () => {
+  if (!isAdmin()) return;
+  const msg = $('admRoomMsg');
+  const nom = $('admRoomName').value.trim();
+  const desc = $('admRoomDesc').value.trim();
+  if (nom.length < 2) { msg.textContent = 'Nom trop court (2 caractères minimum).'; return; }
+  const rooms = await loadRooms();
+  if (roomNameTaken(nom)) { msg.textContent = 'Ce nom de salon est déjà pris.'; return; }
+  const id = slugRoomId(nom, rooms.map(r => r.id));
+  const ordre = rooms.reduce((mx, r) => Math.max(mx, r.ordre || 0), 0) + 1;
+  rooms.push({ id, nom, description: desc, ordre, archive: false, creePar: pseudo, creeLe: Date.now() });
+  await saveRooms(rooms);
+  await adminLog('Création du salon « ' + nom + ' »');
+  $('admRoomName').value = ''; $('admRoomDesc').value = ''; msg.textContent = '';
+  refreshAdmin();
+});
+
+async function renameRoom(id) {
+  const rooms = await loadRooms();
+  const r = rooms.find(x => x.id === id); if (!r) return;
+  const nv = prompt('Nouveau nom du salon :', r.nom);
+  if (nv === null) return;
+  const nom = nv.trim();
+  if (nom.length < 2) { alert('Nom trop court (2 caractères minimum).'); return; }
+  if (roomNameTaken(nom, id)) { alert('Ce nom de salon est déjà pris.'); return; }
+  const ancien = r.nom; r.nom = nom;
+  await saveRooms(rooms);
+  await adminLog('Salon « ' + ancien + ' » renommé « ' + nom + ' »');
+  refreshAdmin();
+}
+
+async function moveRoom(id, delta) {
+  const rooms = await loadRooms();   // déjà triés par ordre
+  const i = rooms.findIndex(r => r.id === id);
+  const j = i + delta;
+  if (i < 0 || j < 0 || j >= rooms.length) return;
+  const tmp = rooms[i].ordre; rooms[i].ordre = rooms[j].ordre; rooms[j].ordre = tmp;
+  await saveRooms(rooms);
+  refreshAdmin();
+}
+
+async function toggleArchiveRoom(id) {
+  if (id === ROOM_DEFAULT) return;          // « Général » toujours visible
+  const rooms = await loadRooms();
+  const r = rooms.find(x => x.id === id); if (!r) return;
+  r.archive = !r.archive;
+  await saveRooms(rooms);
+  await adminLog((r.archive ? 'Archivage' : 'Désarchivage') + ' du salon « ' + r.nom + ' »');
+  refreshAdmin();
+}
+
+async function deleteRoom(id) {
+  if (id === ROOM_DEFAULT) return;          // garde-fou : « Général » non supprimable
+  const rooms = await loadRooms();
+  const r = rooms.find(x => x.id === id); if (!r) return;
+  const ok = await askConfirm('Supprimer le salon ?', 'Le salon « ' + r.nom + ' » et tous ses messages seront supprimés.');
+  if (!ok) return;
+  await saveRooms(rooms.filter(x => x.id !== id));
+  await sdel(roomKey(id));
+  await adminLog('Suppression du salon « ' + r.nom + ' »');
+  refreshAdmin();
+}
+
+/* -------- Modération des salons (par salon sélectionné) -------- */
+let admModRoomId = ROOM_DEFAULT;
+
+/* Remplit le sélecteur de modération avec TOUS les salons (archivés compris). */
+function populateModRoomSelector(rooms) {
+  if (!rooms.some(r => r.id === admModRoomId))
+    admModRoomId = rooms.some(r => r.id === ROOM_DEFAULT) ? ROOM_DEFAULT : (rooms[0] ? rooms[0].id : ROOM_DEFAULT);
+  const sel = $('admModRoom');
+  sel.innerHTML = '';
+  for (const r of rooms) {
+    const o = document.createElement('option');
+    o.value = r.id;
+    o.textContent = r.nom + (r.archive ? ' (archivé)' : '');
+    if (r.id === admModRoomId) o.selected = true;
+    sel.appendChild(o);
+  }
+}
+$('admModRoom').addEventListener('change', async e => {
+  admModRoomId = e.target.value;
+  renderAdminSalon((await sget(roomKey(admModRoomId))) || []);
+});
+
+function renderAdminSalon(log) {
+  const box = $('admSalon');
+  box.innerHTML = '';
+  const recent = log.slice(-30);
+  for (const m of recent) {
+    const d = document.createElement('div');
+    d.className = 'item';
+    d.innerHTML = '<span class="small"><strong>' + esc(m.from || 'sys') + '</strong> · ' + fmtTime(m.ts) +
+      ' — ' + esc(String(m.text).slice(0, 60)) + '</span>';
+    d.appendChild(adminBtn('✕', () => adminDeleteSalonMsg(m), 'danger'));
+    box.appendChild(d);
+  }
+}
+async function adminDeleteSalonMsg(m) {
+  const k = roomKey(admModRoomId);
+  const nom = roomById(admModRoomId) ? roomById(admModRoomId).nom : admModRoomId;
+  let log = (await sget(k)) || [];
+  log = log.filter(x => !(x.ts === m.ts && x.from === m.from && x.text === m.text));
+  await sset(k, log);
+  await adminLog('Suppression d\u2019un message du salon \u00ab ' + nom + ' \u00bb (' + (m.from || '?') + ')');
+  refreshAdmin();
+}
+$('admClearSalon').addEventListener('click', async () => {
+  if (!isAdmin()) return;
+  const nom = roomById(admModRoomId) ? roomById(admModRoomId).nom : admModRoomId;
+  const ok = await askConfirm('Vider le salon ?', 'Tous les messages du salon « ' + nom + ' » seront supprimés.');
+  if (!ok) return;
+  await sset(roomKey(admModRoomId), []);
+  await adminLog('Salon « ' + nom + ' » vidé');
+  refreshAdmin();
+});
+
+/* -------- Tournois (administration) -------- */
+let admTournSel = null;
+
+function statutLabelTourn(s) {
+  return s === 'inscriptions' ? 'Inscriptions ouvertes' : s === 'en-cours' ? 'En cours' : 'Terminé';
+}
+function tcLabelTourn(tc) {
+  if (!tc) return 'sans pendule';
+  return Math.round(tc.base / 60) + ' min' + (tc.inc ? ' + ' + tc.inc + ' s' : '');
+}
+
+async function renderAdminTournois() {
+  const list = await loadTournaments();
+  const tb = $('admTournList');
+  tb.innerHTML = '';
+  for (const t of list) {
+    const tr = document.createElement('tr');
+    tr.innerHTML =
+      '<td><strong>' + esc(t.nom) + '</strong></td>' +
+      '<td class="small">' + formatLabelTourn(t.format) + '</td>' +
+      '<td class="small">' + statutLabelTourn(t.statut) + '</td>' +
+      '<td class="small">' + t.nbInscrits + '</td>';
+    const td = document.createElement('td'); td.className = 'actions';
+    td.appendChild(adminBtn(admTournSel === t.id ? '✓ Géré' : 'Gérer', () => { admTournSel = t.id; renderAdminTournois(); }));
+    td.appendChild(adminBtn('Supprimer', () => supprimerTournoi(t.id), 'danger'));
+    tr.appendChild(td); tb.appendChild(tr);
+  }
+  await renderAdminTournDetail();
+}
+
+/* Libellé lisible du format. */
+function formatLabelTourn(f) {
+  return f === 'elimination' ? 'Élimination directe' : f === 'suisse' ? 'Système suisse' : 'Round-robin';
+}
+/* Une ronde suivante est-elle possible ? (dépend du format) */
+function peutRondeSuivante(T) {
+  if (T.format === 'round-robin') return T.rondeCourante < T.rondes.length;
+  if (T.format === 'suisse') return T.rondeCourante < (T.nbRondes || 0);
+  // élimination : il reste un tour tant que la ronde courante compte plus d'un match
+  const c = T.rondes.find(r => r.numero === T.rondeCourante);
+  return !!c && c.matchs.length > 1;
+}
+/* Progression « ronde X / total » selon le format (total connu ou non). */
+function progressionRonde(T) {
+  if (T.statut !== 'en-cours') return '';
+  if (T.format === 'round-robin') return ' · ronde ' + T.rondeCourante + '/' + T.rondes.length;
+  if (T.format === 'suisse') return ' · ronde ' + T.rondeCourante + '/' + (T.nbRondes || '?');
+  return ' · ronde ' + T.rondeCourante;    // élimination : total variable
+}
+
+async function renderAdminTournDetail() {
+  const box = $('admTournDetail');
+  box.innerHTML = '';
+  if (!admTournSel) return;
+  const T = await getTournament(admTournSel);
+  if (!T) { admTournSel = null; return; }
+  await syncResultatsTournoi(T);   // recopie les résultats des parties terminées
+
+  const head = document.createElement('div');
+  head.innerHTML = '<h2 style="color:var(--gold)">' + esc(T.nom) + ' — ' + statutLabelTourn(T.statut) +
+    ' <span class="small">(' + formatLabelTourn(T.format) + ', ' + tcLabelTourn(T.cadence) + progressionRonde(T) + ')</span></h2>' +
+    (T.description ? '<p class="small">' + esc(T.description) + '</p>' : '');
+  box.appendChild(head);
+
+  const bar = document.createElement('div'); bar.className = 'toolbar'; bar.style.margin = '8px 0';
+  if (T.statut === 'inscriptions') {
+    bar.appendChild(adminBtn(T.inscriptionsOuvertes ? 'Fermer les inscriptions' : 'Ouvrir les inscriptions', () => basculerInscriptions(T.id)));
+    bar.appendChild(adminBtn('Lancer le tournoi', () => lancerTournoi(T.id), 'primary'));
+  } else if (T.statut === 'en-cours') {
+    if (peutRondeSuivante(T)) bar.appendChild(adminBtn('Ronde suivante', () => rondeSuivante(T.id)));
+    bar.appendChild(adminBtn('Clore le tournoi', () => cloreTournoi(T.id), 'danger'));
+  }
+  box.appendChild(bar);
+
+  const pdiv = document.createElement('div');
+  pdiv.innerHTML = '<p class="small" style="margin:6px 0"><strong>Inscrits (' + T.participants.length + ')</strong> : ' +
+    (T.participants.length ? T.participants.map(esc).join(', ') : '—') + '</p>';
+  box.appendChild(pdiv);
+
+  for (const ronde of T.rondes) {
+    const showResults = T.statut !== 'inscriptions' && ronde.numero <= T.rondeCourante;
+    const rdiv = document.createElement('div'); rdiv.style.margin = '10px 0';
+    const titre = document.createElement('p'); titre.className = 'small';
+    titre.innerHTML = '<strong>Ronde ' + ronde.numero + (ronde.numero === T.rondeCourante ? ' — courante' : '') + '</strong>';
+    rdiv.appendChild(titre);
+    ronde.matchs.forEach((m, mi) => {
+      const row = document.createElement('div'); row.className = 'item';
+      row.innerHTML = '<span class="small">' + esc(m.blanc) + ' <span style="color:var(--muted)">vs</span> ' +
+        esc(m.noir) + ' &nbsp; <strong>' + (m.resultat || '—') + '</strong></span>';
+      if (showResults) {
+        const ctl = document.createElement('span'); ctl.className = 'actions';
+        [['1-0', '1-0'], ['½', '1/2-1/2'], ['0-1', '0-1'], ['✕', null]].forEach(([lbl, val]) =>
+          ctl.appendChild(adminBtn(lbl, () => saisirResultat(T.id, ronde.numero, mi, val))));
+        row.appendChild(ctl);
+      }
+      rdiv.appendChild(row);
+    });
+    box.appendChild(rdiv);
+  }
+
+  if (T.classement && T.classement.length) {
+    const ctab = document.createElement('div');
+    let html = '<p class="small" style="margin:8px 0 4px"><strong>Classement</strong></p>' +
+      '<table class="admin-table"><thead><tr><th>#</th><th>Joueur</th><th>Pts</th><th>J</th><th>V</th></tr></thead><tbody>';
+    T.classement.forEach((c, i) => {
+      html += '<tr><td class="small">' + (i + 1) + '</td><td>' + esc(c.pseudo) + '</td><td class="small">' +
+        c.points + '</td><td class="small">' + c.joues + '</td><td class="small">' + (c.victoires || 0) + '</td></tr>';
+    });
+    ctab.innerHTML = html + '</tbody></table>';
+    box.appendChild(ctab);
+  }
+}
+
+$('admTournCreate').addEventListener('click', async () => {
+  if (!isAdmin()) return;
+  const msg = $('admTournMsg');
+  const nom = $('admTournNom').value.trim();
+  if (nom.length < 2) { msg.textContent = 'Nom trop court (2 caractères minimum).'; return; }
+  const list = await loadTournaments();
+  if (list.some(t => t.nom.trim().toLowerCase() === nom.toLowerCase())) { msg.textContent = 'Ce nom de tournoi est déjà pris.'; return; }
+  const tcv = $('admTournTc').value;
+  const cadence = tcv === 'inf' ? null : { base: +tcv.split('|')[0], inc: +tcv.split('|')[1] };
+  const format = $('admTournFormat').value;
+  const id = 't' + Date.now().toString(36) + Math.random().toString(36).slice(2, 5);
+  const T = {
+    id, nom, description: $('admTournDesc').value.trim(),
+    format, cadence,
+    statut: 'inscriptions', inscriptionsOuvertes: true,
+    participants: [], rondes: [], classement: [], rondeCourante: 0,
+    creePar: pseudo, creeLe: Date.now(), debutLe: null
+  };
+  if (format === 'suisse') T.nbRondes = Math.max(2, Math.min(15, parseInt($('admTournRondes').value, 10) || 5));
+  await saveTournament(T);
+  await adminLog('Création du tournoi « ' + nom + ' »');
+  $('admTournNom').value = ''; $('admTournDesc').value = ''; msg.textContent = '';
+  admTournSel = id;
+  renderAdminTournois();
+});
+
+/* Le champ « nombre de rondes » ne concerne que le système suisse. */
+$('admTournFormat').addEventListener('change', e => {
+  $('admTournRondes').style.display = e.target.value === 'suisse' ? '' : 'none';
+});
+
+async function basculerInscriptions(id) {
+  const T = await getTournament(id); if (!T || T.statut !== 'inscriptions') return;
+  T.inscriptionsOuvertes = !T.inscriptionsOuvertes;
+  await saveTournament(T);
+  await adminLog('Tournoi « ' + T.nom + ' » : inscriptions ' + (T.inscriptionsOuvertes ? 'ouvertes' : 'fermées'));
+  renderAdminTournois();
+}
+async function lancerTournoi(id) {
+  const T = await getTournament(id); if (!T || T.statut !== 'inscriptions') return;
+  if (T.participants.length < 2) { alert('Au moins 2 joueurs inscrits sont nécessaires.'); return; }
+  const list = await loadTournaments();
+  if (list.some(x => x.statut === 'en-cours' && x.id !== id)) { alert('Un autre tournoi est déjà en cours (un seul à la fois).'); return; }
+  if (T.format === 'elimination') T.rondes = genererElimination(T.participants);
+  else if (T.format === 'suisse') { T.rondes = []; T.rondes.push(apparierSuisse(T)); }
+  else T.rondes = genererRoundRobin(T.participants);
+  T.statut = 'en-cours'; T.inscriptionsOuvertes = false; T.rondeCourante = 1; T.debutLe = Date.now();
+  await creerPartiesRonde(T, 1);
+  T.classement = calculerClassement(T);
+  await saveTournament(T);
+  await adminLog('Lancement du tournoi « ' + T.nom + ' » (' + T.participants.length + ' joueurs)');
+  renderAdminTournois();
+}
+async function rondeSuivante(id) {
+  const T = await getTournament(id); if (!T || T.statut !== 'en-cours') return;
+  const courante = T.rondes.find(r => r.numero === T.rondeCourante);
+
+  if (T.format === 'round-robin') {
+    if (T.rondeCourante >= T.rondes.length) { alert('Dernière ronde atteinte — clôturez le tournoi.'); return; }
+    if (courante && courante.matchs.some(m => !m.resultat)) {
+      const ok = await askConfirm('Ronde incomplète', 'Des résultats manquent à la ronde ' + T.rondeCourante + '. Passer quand même à la suivante ?');
+      if (!ok) return;
+    }
+    T.rondeCourante++;
+  } else {
+    // élimination / suisse : la ronde courante doit être complète
+    if (courante && courante.matchs.some(m => !m.resultat)) { alert('Complète tous les résultats de la ronde avant de générer la suivante.'); return; }
+    let nouvelle;
+    if (T.format === 'elimination') {
+      const res = rondeEliminationSuivante(T);
+      if (res.erreur === 'nulle') { alert('Élimination : un match est nul. Saisis un résultat décisif (départage) avant de continuer.'); return; }
+      if (res.fini) { alert('Il ne reste qu’un joueur : le tournoi est terminé, clôture-le.'); return; }
+      nouvelle = res.ronde;
+    } else {                       // suisse
+      if (T.rondeCourante >= (T.nbRondes || 0)) { alert('Nombre de rondes du suisse atteint — clôture le tournoi.'); return; }
+      nouvelle = apparierSuisse(T);
+    }
+    T.rondes.push(nouvelle);
+    T.rondeCourante = nouvelle.numero;
+  }
+
+  await creerPartiesRonde(T, T.rondeCourante);
+  T.classement = calculerClassement(T);
+  await saveTournament(T);
+  await adminLog('Tournoi « ' + T.nom + ' » : passage à la ronde ' + T.rondeCourante);
+  renderAdminTournois();
+}
+async function cloreTournoi(id) {
+  const T = await getTournament(id); if (!T || T.statut !== 'en-cours') return;
+  const ok = await askConfirm('Clore le tournoi ?', 'Le classement final sera figé.');
+  if (!ok) return;
+  T.statut = 'termine'; T.classement = calculerClassement(T);
+  await saveTournament(T);
+  await adminLog('Clôture du tournoi « ' + T.nom + ' »');
+  renderAdminTournois();
+}
+async function supprimerTournoi(id) {
+  const T = await getTournament(id);
+  const ok = await askConfirm('Supprimer le tournoi ?', 'Le tournoi « ' + (T ? T.nom : id) + ' » et ses parties seront supprimés.');
+  if (!ok) return;
+  await deleteTournament(id);
+  if (admTournSel === id) admTournSel = null;
+  await adminLog('Suppression du tournoi « ' + (T ? T.nom : id) + ' »');
+  renderAdminTournois();
+}
+async function saisirResultat(id, numero, mi, resultat) {
+  const T = await getTournament(id); if (!T) return;
+  const ronde = (T.rondes || []).find(r => r.numero === numero); if (!ronde) return;
+  const m = ronde.matchs[mi]; if (!m) return;
+  m.resultat = resultat;
+  T.classement = calculerClassement(T);
+  await saveTournament(T);
+  await adminLog('Tournoi « ' + T.nom + ' » : R' + numero + ' ' + m.blanc + '–' + m.noir + ' = ' + (resultat || 'effacé'));
+  renderAdminTournois();
+}
+
+/* -------- Journal -------- */
+function renderAdminLog(log) {
+  const box = $('admLog');
+  box.innerHTML = '';
+  const rev = log.slice().reverse();
+  for (const e of rev) {
+    const d = document.createElement('div');
+    d.className = 'item';
+    d.innerHTML = '<span class="small"><strong>' + esc(e.par) + '</strong> · ' + fmtTime(e.ts) + ' — ' + esc(e.action) + '</span>';
+    box.appendChild(d);
+  }
+}
+
+/* -------- Revendication initiale du rôle admin -------- */
+$('adminClaim').addEventListener('click', async () => {
+  if (!currentUser) return;
+  if (USE_PHP) {
+    try { const r = await apiAuth('claimAdmin'); if (r.user) currentUser = r.user; }
+    catch (e) { alert(e.message); return; }
+    await adminLog(pseudo + ' devient administrateur (initialisation)');
+    refreshProfileUI();
+    refreshAdmin();
+    return;
+  }
+  const users = await dbUsers();
+  if (users.some(u => u.role === 'admin')) { refreshAdmin(); return; }
+  const me = users.find(x => x.id === currentUser.id);
+  if (!me) return;
+  me.role = 'admin';
+  await dbSaveUsers(users);
+  currentUser = me;
+  await adminLog(pseudo + ' devient administrateur (initialisation)');
+  refreshProfileUI();
+  refreshAdmin();
+});
+
+/* -------- Maintenance -------- */
+$('admExportAll').addEventListener('click', async () => {
+  if (!isAdmin()) return;
+  const rooms = await loadRooms();
+  const salons_messages = {};
+  for (const r of rooms) salons_messages[r.id] = (await sget(roomKey(r.id))) || [];
+  const data = {
+    base: 'le-cercle', type: 'sauvegarde-complete', version: 2,
+    exportee_le: new Date().toISOString(),
+    utilisateurs: await dbUsers(),
+    parties_index: await readIndex(),
+    salons: rooms,
+    salons_messages: salons_messages,
+    suspendus: (await sget('db:banned')) || [],
+    journal_admin: (await sget('db:adminlog')) || []
+  };
+  const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'le-cercle-backup.json';
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(a.href), 4000);
+  await adminLog('Export de la sauvegarde complète');
+});
+$('admPurge').addEventListener('click', async () => {
+  if (!isAdmin()) return;
+  const ok = await askConfirm('Purger les parties terminées ?', 'Elles seront retirées de l\u2019index et leurs données supprimées.');
+  if (!ok) return;
+  let idx = await readIndex();
+  const done = idx.filter(g => g.status === 'finished');
+  idx = idx.filter(g => g.status !== 'finished');
+  await writeIndex(idx);
+  for (const g of done) { await sdel('game:' + g.id); await sdel('gamechat:' + g.id); }
+  await adminLog('Purge de ' + done.length + ' partie(s) terminée(s)');
+  refreshAdmin();
+});
+$('admReset').addEventListener('click', async () => {
+  if (!isAdmin()) return;
+  const ok1 = await askConfirm('Tout réinitialiser ?', 'Comptes, parties, salon et journaux seront effacés.');
+  if (!ok1) return;
+  const ok2 = await askConfirm('Vraiment sûr ?', 'Dernière confirmation : cette action est IRRÉVERSIBLE.');
+  if (!ok2) return;
+  const idx = await readIndex();
+  for (const g of idx) { await sdel('game:' + g.id); await sdel('gamechat:' + g.id); }
+  await sset('gamesindex', []);
+  const rooms = await loadRooms();
+  for (const r of rooms) await sdel(roomKey(r.id));
+  await sdel('db:rooms');
+  _roomsSeed = null;                 // réautorise la création du salon « Général »
+  activeRoomId = ROOM_DEFAULT;
+  admModRoomId = ROOM_DEFAULT;
+  await ensureRooms();
+  await sset('db:banned', []);
+  await sset('db:adminlog', []);
+  await sset(DB_USERS, []);
+  bannedCache = [];
+  currentUser = null; pseudo = null;
+  await sset('session', { ts: Date.now() }, false);
+  refreshProfileUI();
+  refreshAdmin();
+  switchView('home');
+});
+
+/* ============================================================
+   VUE TOURNOIS (utilisateur)
+============================================================ */
+let tournSel = null;
+
+async function refreshTournois() {
+  if (!HAS_STORAGE) return;
+  $('tournLoginHint').style.display = pseudo ? 'none' : '';
+  const list = await loadTournaments();
+  const ordre = { 'en-cours': 0, 'inscriptions': 1, 'termine': 2 };
+  list.sort((a, b) => (ordre[a.statut] - ordre[b.statut]));
+  const box = $('tournList');
+  box.innerHTML = '';
+  for (const t of list) {
+    const item = document.createElement('div'); item.className = 'item';
+    item.innerHTML = '<span><strong>' + esc(t.nom) + '</strong> <span class="small">· ' +
+      statutLabelTourn(t.statut) + ' · ' + t.nbInscrits + ' inscrits · ' + tcLabelTourn(t.cadence) + '</span></span>';
+    const b = document.createElement('button');
+    b.textContent = tournSel === t.id ? '✓ Ouvert' : 'Voir';
+    b.addEventListener('click', () => { tournSel = t.id; refreshTournois(); });
+    item.appendChild(b);
+    box.appendChild(item);
+  }
+  await renderTournDetail();
+}
+
+async function renderTournDetail() {
+  const card = $('tournDetailCard'), box = $('tournDetail');
+  if (!tournSel) { card.style.display = 'none'; box.innerHTML = ''; return; }
+  const T = await getTournament(tournSel);
+  if (!T) { tournSel = null; card.style.display = 'none'; return; }
+  await syncResultatsTournoi(T);
+  card.style.display = ''; box.innerHTML = '';
+
+  const head = document.createElement('div');
+  head.innerHTML = '<h2 style="color:var(--gold)">' + esc(T.nom) + ' — ' + statutLabelTourn(T.statut) +
+    ' <span class="small">(' + formatLabelTourn(T.format) + ', ' + tcLabelTourn(T.cadence) + ')</span></h2>' +
+    (T.description ? '<p class="small">' + esc(T.description) + '</p>' : '');
+  box.appendChild(head);
+
+  if (T.statut === 'inscriptions') {
+    const inscrit = pseudo && T.participants.includes(pseudo);
+    const bar = document.createElement('div'); bar.className = 'toolbar'; bar.style.margin = '8px 0';
+    if (!T.inscriptionsOuvertes) {
+      bar.innerHTML = '<span class="small">Les inscriptions sont fermées.</span>';
+    } else {
+      const b = document.createElement('button');
+      b.className = inscrit ? 'danger' : 'primary';
+      b.textContent = inscrit ? 'Me désinscrire' : "M'inscrire";
+      b.addEventListener('click', () => inscrit ? desinscrireTournoi(T.id) : inscrireTournoi(T.id));
+      bar.appendChild(b);
+    }
+    box.appendChild(bar);
+  }
+
+  if (T.statut === 'en-cours' && pseudo) {
+    const ronde = T.rondes.find(r => r.numero === T.rondeCourante);
+    const m = ronde && ronde.matchs.find(x => x.blanc === pseudo || x.noir === pseudo);
+    if (m && m.gameId && !m.resultat) {
+      const bar = document.createElement('div'); bar.style.margin = '8px 0';
+      const b = document.createElement('button'); b.className = 'primary';
+      b.textContent = '♟ Jouer ma partie (ronde ' + T.rondeCourante + ')';
+      b.addEventListener('click', () => { enterOnlineGame(m.gameId); switchView('online'); });
+      bar.appendChild(b);
+      box.appendChild(bar);
+    }
+  }
+
+  const pdiv = document.createElement('div');
+  pdiv.innerHTML = '<p class="small" style="margin:6px 0"><strong>Inscrits (' + T.participants.length + ')</strong> : ' +
+    (T.participants.length ? T.participants.map(esc).join(', ') : '—') + '</p>';
+  box.appendChild(pdiv);
+
+  for (const ronde of T.rondes) {
+    if (T.statut !== 'inscriptions' && ronde.numero > T.rondeCourante) continue;  // ronde pas encore ouverte
+    const rdiv = document.createElement('div'); rdiv.style.margin = '10px 0';
+    const titre = document.createElement('p'); titre.className = 'small';
+    titre.innerHTML = '<strong>Ronde ' + ronde.numero + (ronde.numero === T.rondeCourante ? ' — courante' : '') + '</strong>';
+    rdiv.appendChild(titre);
+    ronde.matchs.forEach(m => {
+      const row = document.createElement('div'); row.className = 'item';
+      if (m.blanc === pseudo || m.noir === pseudo) row.style.borderColor = 'var(--gold-deep)';
+      row.innerHTML = '<span class="small">' + esc(m.blanc) + ' <span style="color:var(--muted)">vs</span> ' +
+        esc(m.noir) + ' &nbsp; <strong>' + (m.resultat || '—') + '</strong></span>';
+      if (m.gameId) {
+        const b = document.createElement('button');
+        b.textContent = m.resultat ? 'Revoir' : '👁 Suivre';
+        b.addEventListener('click', () => { enterOnlineGame(m.gameId); switchView('online'); });
+        row.appendChild(b);
+      }
+      rdiv.appendChild(row);
+    });
+    box.appendChild(rdiv);
+  }
+
+  if (T.classement && T.classement.length) {
+    const ctab = document.createElement('div');
+    let html = '<p class="small" style="margin:8px 0 4px"><strong>Classement</strong></p>' +
+      '<table class="admin-table"><thead><tr><th>#</th><th>Joueur</th><th>Pts</th><th>J</th><th>V</th></tr></thead><tbody>';
+    T.classement.forEach((c, i) => {
+      const moi = c.pseudo === pseudo;
+      html += '<tr' + (moi ? ' style="color:var(--gold-bright)"' : '') + '><td class="small">' + (i + 1) + '</td><td>' +
+        esc(c.pseudo) + '</td><td class="small">' + c.points + '</td><td class="small">' + c.joues +
+        '</td><td class="small">' + (c.victoires || 0) + '</td></tr>';
+    });
+    ctab.innerHTML = html + '</tbody></table>';
+    box.appendChild(ctab);
+  }
+}
+
+async function inscrireTournoi(id) {
+  if (!requirePseudo()) return;
+  const T = await getTournament(id);
+  if (!T || T.statut !== 'inscriptions' || !T.inscriptionsOuvertes) return;
+  if (!T.participants.includes(pseudo)) { T.participants.push(pseudo); await saveTournament(T); }
+  refreshTournois();
+}
+async function desinscrireTournoi(id) {
+  const T = await getTournament(id);
+  if (!T || T.statut !== 'inscriptions') return;
+  T.participants = T.participants.filter(p => p !== pseudo);
+  await saveTournament(T);
+  refreshTournois();
+}
+
+setInterval(() => { if (currentView === 'tournois' && !document.hidden) refreshTournois(); }, 6000);
+
+/* ===================== Démarrage ===================== */
+(async function boot() {
+  await loadSession();
+  await ensureRooms();          // initialise « Général » + migre l'ancien chat:global
+  if (pseudo) { heartbeat(); refreshThreads(); }
+  refreshLobby();
+  refreshSalon();
+})();
