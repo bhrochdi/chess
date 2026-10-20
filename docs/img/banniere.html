@@ -1,0 +1,58 @@
+<!doctype html>
+<!-- Source de la bannière du dépôt (aperçu social GitHub, 1280×640).
+     Régénérer : capture Playwright de cette page → docs/img/banniere.png -->
+<html lang="fr"><head><meta charset="utf-8"><style>
+  :root { --bg:#14110b; --panel:#211a12; --edge:#3b2f1f; --gold:#c69a4c;
+          --gold-bright:#e4c781; --ink:#ece2cb; --muted:#998b6e;
+          --sq-light:#e7d6b2; --sq-dark:#6c4a2e; --frame:#2c2014; }
+  html, body { margin:0; width:1280px; height:640px; overflow:hidden; }
+  body { background: radial-gradient(ellipse at 30% 40%, #2a2016 0%, var(--bg) 70%);
+         color:var(--ink); font-family:'DejaVu Serif', Georgia, serif;
+         display:flex; align-items:center; gap:70px; padding:0 80px; box-sizing:border-box; }
+  .txt { flex:1; }
+  .kicker { color:var(--gold); letter-spacing:.32em; text-transform:uppercase; font-size:17px; }
+  h1 { font-family:'FreeSerif', Georgia, serif; font-weight:normal; font-size:104px;
+       margin:10px 0 6px; color:var(--gold-bright); line-height:1; }
+  .rule { width:120px; height:2px; background:var(--gold); margin:22px 0 26px; }
+  p { font-size:24px; line-height:1.45; color:var(--ink); margin:0 0 26px; max-width:560px; }
+  .tags { display:flex; flex-wrap:wrap; gap:10px; max-width:600px; }
+  .tags span { border:1px solid var(--edge); background:var(--panel); color:var(--muted);
+               padding:6px 14px; border-radius:20px; font-size:16px; }
+  .board { padding:18px; background:var(--frame); border:1px solid var(--edge);
+           box-shadow:0 22px 60px rgba(0,0,0,.6); }
+  .grid { display:grid; grid-template-columns:repeat(8,58px); grid-template-rows:repeat(8,58px); }
+  .grid div { display:flex; align-items:center; justify-content:center;
+              font-family:'FreeSerif', serif; font-size:50px; line-height:1; }
+  .l { background:var(--sq-light); } .d { background:var(--sq-dark); }
+  .w { color:#fbf6ea; text-shadow:0 0 1px #000, 0 0 2px #000, 0 1px 2px rgba(0,0,0,.6); }
+  .b { color:#1b140c; text-shadow:0 0 1px rgba(255,255,255,.25); }
+</style></head><body>
+  <div class="txt">
+    <div class="kicker">Plateforme d'échecs en ligne</div>
+    <h1>Le Cercle</h1>
+    <div class="rule"></div>
+    <p>Jouez en local contre l'IA ou en ligne, discutez dans les salons et
+       organisez des tournois.</p>
+    <div class="tags"><span>HTML/CSS/JS vanilla</span><span>PHP 8 · PDO</span>
+      <span>MySQL</span><span>Tournois</span><span>IA Web Worker</span></div>
+  </div>
+  <div class="board"><div class="grid" id="g"></div></div>
+<script>
+  // Partie italienne après 1.e4 e5 2.Cf3 Cc6 3.Fc4 Fc5
+  const fen = 'r1bqk1nr/pppp1ppp/2n5/2b1p3/2B1P3/5N2/PPPP1PPP/RNBQK2R';
+  const G = { k:'♚', q:'♛', r:'♜', b:'♝', n:'♞', p:'♟' };
+  const g = document.getElementById('g');
+  fen.split('/').forEach((row, r) => {
+    let c = 0;
+    for (const ch of row) {
+      if (/\d/.test(ch)) { for (let i = 0; i < +ch; i++) add(r, c++, ''); }
+      else add(r, c++, ch);
+    }
+  });
+  function add(r, c, ch) {
+    const d = document.createElement('div');
+    d.className = ((r + c) % 2 ? 'd' : 'l') + (ch ? (ch === ch.toUpperCase() ? ' w' : ' b') : '');
+    d.textContent = ch ? G[ch.toLowerCase()] : '';
+    g.appendChild(d);
+  }
+</script></body></html>
