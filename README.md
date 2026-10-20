@@ -1,5 +1,7 @@
 # Le Cercle — Plateforme d'échecs en ligne
 
+![Le Cercle — plateforme d'échecs en ligne](docs/img/banniere.png)
+
 Application web d'échecs (jeu local + IA, parties en ligne, salons, messagerie,
 tournois, administration), servie en autonomie par **WampServer** (Apache +
 PHP + MySQL). Front en HTML/CSS/JS vanilla, sans framework ni dépendance npm.
@@ -27,6 +29,7 @@ tests/
   _runner-*.html          lanceurs navigateur des tests (si node absent)
 docs/
   TESTS-MANUELS.md        plan de test manuel (navigateur + SQL)
+  img/banniere.*          bannière du dépôt (source HTML + rendu PNG 1280×640)
 ```
 
 ## Comment ça s'articule
