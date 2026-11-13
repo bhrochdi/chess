@@ -1,0 +1,6 @@
+.git
+vendor
+build
+.env
+api/config.php
+.vscode
