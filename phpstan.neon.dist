@@ -1,0 +1,10 @@
+parameters:
+    level: 8
+    paths:
+        - api
+        - bin
+        - src
+        - tests
+    excludePaths:
+        - api/config*.php
+    tmpDir: build/phpstan

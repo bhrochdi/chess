@@ -1,0 +1,12 @@
+name: Release
+
+on:
+  pull_request:
+    types: [closed]
+
+jobs:
+  release:
+    uses: medaminben/buildkit/.github/workflows/release.yml@v2.0.1
+    permissions:
+      contents: write
+      actions: write

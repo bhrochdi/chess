@@ -1,351 +1,280 @@
-# Le Cercle — Plan de test manuel (backend PHP/MySQL)
+# Le Cercle — plan de test manuel
 
-Vérifie que la plateforme fonctionne de façon autonome sur WampServer,
-sans l'API `window.storage` de l'artefact Claude.ai.
+Vérifie l'application servie (Docker ou WampServer) dans un vrai navigateur.
 
-## 0. Mise en place (une seule fois)
+Les tests automatiques couvrent déjà une partie de ce plan : tests PHP
+(`composer test`, `composer test:integration`), contrôle HTTP
+(`tests/http/smoke.sh`) et test de fumée navigateur (`tests/front/smoke.sh` :
+inscription, invité, partie contre l'ordinateur avec annulation, partie entre
+deux sessions avec nulle, message privé, report automatique d'un résultat de
+tournoi). Ce plan sert pour le reste et avant une livraison.
 
-1. **Base de données** — créer la base et la table :
-   ```
-   c:/wamp64/bin/mysql/mysql8.0.27/bin/mysql.exe -u root -p < sql/schema.sql
-   ```
-2. **Configuration** — copier l'exemple et renseigner les identifiants :
-   ```
-   copy api\config.example.php api\config.php
-   ```
-   puis éditer `api/config.php` (`db_pass`, etc.). Ce fichier est ignoré par git.
-3. **Servir l'application** — vérifier que WampServer (Apache) tourne, puis ouvrir :
-   ```
-   http://localhost/LeCercle/
-   ```
-   (adapter le chemin selon l'emplacement réel sous `c:/wamp64/www/`).
+## 0. Mise en place
 
-**Critère transverse** : la bannière orange « stockage partagé indisponible »
-ne doit **jamais** apparaître. Si elle s'affiche, l'app est ouverte en `file://`
-ou Apache/MySQL ne répond pas → l'onglet réseau du navigateur doit montrer des
-appels `POST api/storage.php` en `200`.
+1. Installer l'application comme l'indique le `README.md` (Docker :
+   `http://localhost:8080/` ; WampServer : hôte virtuel dont la racine est
+   `public/`).
+2. Partir d'une base neuve, puis créer les tables :
+   ```
+   php bin/migrate.php
+   ```
+   Attendu : une ligne « Appliquée : … » par migration ; un second appel répond
+   « Base à jour. ».
+3. Prévoir deux navigateurs distincts (ou un normal et une fenêtre privée) :
+   deux sessions PHP indépendantes, appelées **Alice** et **Bob** ci-dessous.
 
-> Astuce diagnostic : ouvrir la console réseau (F12) et filtrer sur
-> `storage.php`. Toute réponse `≠ 200` (404 = mauvais chemin, 500 = config/DB)
-> pointe la cause.
+**Critère transverse.** Dans l'onglet réseau (F12), chaque appel est un
+`POST api/<ressource>.php` (`auth`, `games`, `rooms`, `direct-messages`,
+`game-comments`, `tournaments`, `admin`). Un refus montre le message du serveur
+tel quel. Aucune réponse 500.
 
 ---
 
-## 1. Compte (authentification serveur via la base kv_store)
+## 1. Comptes
 
-1. Cliquer **Connexion / Créer un compte** → onglet **Créer un compte**.
-2. Créer le **premier** compte (ex. `Alice` / e-mail / mot de passe).
-   - ✅ Attendu : connexion immédiate, et **rôle ADMIN** affiché (1er compte).
-   - ✅ Le bouton **⚙ Admin** apparaît dans la navigation.
-3. Se déconnecter, recharger la page (F5).
-   - ✅ Attendu : reconnexion **automatique** n'a pas lieu après déconnexion,
-     mais après un simple rechargement *sans* déconnexion la session est
-     conservée (clé `session`, scope personnel).
-4. Créer un **second** compte `Bob` (autre navigateur ou fenêtre privée).
-   - ✅ Attendu : `Bob` est un utilisateur normal (pas admin).
-   - ✅ Tester l'unicité : recréer `Alice` → message « pseudo déjà pris ».
-5. Vérifier la persistance en base :
-   ```
-   SELECT cle FROM le_cercle.kv_store WHERE scope='' AND cle='db:users';
-   ```
-   - ✅ Attendu : une ligne `db:users` contenant les deux comptes.
+1. **Connexion / Créer un compte** → **Créer un compte** : créer le premier
+   compte (Alice).
+   - Attendu : connectée, rôle ADMIN, onglet **⚙ Admin** visible.
+2. Recharger la page (F5).
+   - Attendu : toujours connectée.
+3. **Déconnexion**, puis F5.
+   - Attendu : déconnectée.
+4. Créer Bob dans le second navigateur.
+   - Attendu : utilisateur normal, pas d'onglet **⚙ Admin**.
+5. Recréer le pseudo `Alice` (casse quelconque).
+   - Attendu : « Ce pseudo est déjà pris. »
+6. Réutiliser l'e-mail d'Alice.
+   - Attendu : « Un compte existe déjà avec cet e-mail. »
+7. Se connecter avec un mauvais mot de passe.
+   - Attendu : « Identifiant ou mot de passe incorrect. »
+8. **Limitation des tentatives.** Cinq mauvais mots de passe sur le compte de
+   Bob, puis le bon, par le pseudo ou par l'e-mail.
+   - Attendu : « Trop de tentatives de connexion. Réessaie dans quelques
+     minutes. » (HTTP 429), même avec le bon mot de passe.
+   - Attendu : 15 minutes plus tard, la connexion réussit.
+9. Fenêtre privée : **Continuer en invité** sans pseudo.
+   - Attendu : connecté sous `Invite_` suivi de 8 caractères hexadécimaux.
+   - Attendu : F5 garde la session.
+10. Dans l'onglet réseau, la réponse de `me` ou de `login` ne contient aucune
+    empreinte de mot de passe (`$2y$…`).
 
----
+## 2. Jeu local et contre l'ordinateur
 
-## 2. Partie en ligne entre deux navigateurs
+1. Déconnecté, ouvrir **Jeu local & IA**.
+   - Attendu : position de départ ; le statut invite à se connecter ou à jouer
+     en invité.
+2. Connecté, choisir **Deux joueurs (même écran)** et **5 min**, puis
+   **Nouvelle partie**.
+   - Attendu : seuls les coups légaux sont proposés (pastilles) ; le roque, la
+     prise en passant et la promotion (choix de la pièce) fonctionnent.
+   - Attendu : la pendule du camp au trait décompte.
+3. **↶ Annuler** après quelques coups.
+   - Attendu : le dernier coup disparaît.
+4. **⇅ Retourner**.
+   - Attendu : l'échiquier et les coordonnées s'inversent.
+5. Choisir **Ordinateur — club**.
+   - Attendu : une nouvelle partie commence ; après chaque coup, « l'ordinateur
+     réfléchit… », puis l'ordinateur répond.
+   - Attendu : **↶ Annuler** retire le coup de l'ordinateur et le vôtre.
+6. Recharger la page, puis rouvrir **Jeu local & IA**.
+   - Attendu : la partie en cours reprend là où elle en était.
+7. **⤓ Export PGN**.
+   - Attendu : un fichier `.pgn` se télécharge, avec les coups en notation
+     algébrique.
+8. Partie en **3 min + 2 s** : jouer un coup, puis laisser tomber la pendule.
+   - Attendu : à 0, la partie se termine au temps.
 
-Utiliser **deux navigateurs distincts** (ou un normal + un en navigation privée)
-pour avoir deux sessions PHP indépendantes. Navigateur 1 = `Alice`, navigateur 2 = `Bob`.
+## 3. Partie en ligne
 
-1. **Alice** : Accueil → **Créer et attendre un adversaire** (cadence 5 min).
-   - ✅ La partie s'ouvre, statut « En attente d'un adversaire… ».
-2. **Bob** : Accueil → la partie d'Alice apparaît dans **Parties ouvertes** →
+1. **Alice** : **Accueil** → **Créer et attendre un adversaire** (Blitz — 5 min).
+   - Attendu : « En attente d'un adversaire… ».
+2. **Bob** : la partie apparaît dans « Parties ouvertes — défis à relever » →
    **Rejoindre**.
-   - ✅ Les deux écrans passent en « partie en cours » sous quelques secondes
-     (polling 2,5 s).
-3. Jouer **3-4 coups** en alternance.
-   - ✅ Chaque coup apparaît chez l'adversaire en ≤ 3 s, pendules décomptées.
-   - ✅ Les coups illégaux sont refusés ; le roque / la prise en passant
-     fonctionnent (non-régression moteur).
-4. **Alice** : **Proposer nulle** → **Bob** voit la proposition → **Accepter**.
-   - ✅ Les deux écrans affichent « Partie nulle » (½-½).
-   - *(Variante : tester **Abandonner** sur une autre partie.)*
-5. Après la fin, recharger l'Accueil des deux côtés.
-   - ✅ Statistiques V/D/N mises à jour pour les comptes (clé `db:users`).
-   - ✅ La partie bascule de « en cours » à « terminée ».
-6. **Spectateur** : un 3e visiteur (ou Alice depuis l'Accueil) clique
-   **👁 Regarder** sur une partie en cours.
-   - ✅ Le plateau se met à jour sans pouvoir jouer.
+   - Attendu : les deux écrans passent en partie en cours en quelques secondes
+     (rafraîchissement toutes les 2,5 s).
+3. Jouer quelques coups chacun son tour.
+   - Attendu : chaque coup apparaît chez l'adversaire en 3 s au plus ; seul le
+     joueur au trait peut jouer (« à toi ! »).
+   - Attendu : les pendules des deux écrans concordent à une seconde près.
+4. **Alice** : **½ Proposer nulle**.
+   - Attendu chez Alice : « Proposition de nulle envoyée… ».
+   - Attendu chez Bob : bouton **Accepter ½-½**.
+   - Attendu après acceptation : « Partie nulle », résultat ½-½ des deux côtés.
+5. Nouvelle partie, puis **⚐ Abandonner** (confirmation).
+   - Attendu : la partie est perdue pour celui qui abandonne, chez les deux
+     joueurs.
+6. Un troisième compte : **Accueil** → « Parties en cours — à regarder » →
+   **👁 Regarder**.
+   - Attendu : l'échiquier suit la partie ; « mode spectateur » ; aucun coup
+     possible.
+7. **Commentaires en direct** : chacun écrit un message sous la partie.
+   - Attendu : les autres le voient en 3 s au plus.
+8. Partie en 3 min + 2 s : laisser tomber la pendule d'un joueur.
+   - Attendu : fin au temps, des deux côtés, sans action de l'adversaire.
+9. Après quelques parties terminées, ouvrir **Mon profil**.
+   - Attendu : victoires, défaites et nulles comptent les parties en ligne
+     terminées seulement (pas les parties locales ni contre l'ordinateur).
 
----
+## 4. Salons
 
-## 3. Salon (chat partagé)
+1. **Alice** et **Bob** : onglet **Salon**, salon « Général ».
+   - Attendu : un message d'Alice apparaît chez Bob en 3 s au plus.
+2. Bob sur l'**Accueil** pendant qu'Alice écrit.
+   - Attendu : un badge de non-lus apparaît sur l'onglet **Salon**.
+3. Changer de salon dans le sélecteur.
+   - Attendu : le titre, la description et le fil suivent le salon choisi ; les
+     messages d'un salon n'apparaissent pas dans un autre.
+4. Un message vide ou trop long est refusé (« Message vide. » ou « Message trop
+   long (… caractères maximum). »).
 
-> Depuis `feat/admin-salons`, le salon n'est plus unique : voir la **section 7**
-> pour les salons multiples. Les étapes ci-dessous valent pour le salon actif
-> (« Général » par défaut) ; la clé en base est désormais `chat:room:general`.
+## 5. Messages privés
 
-1. **Alice** : onglet **Salon**, envoyer un message.
-2. **Bob** : onglet **Salon**.
-   - ✅ Le message d'Alice apparaît en ≤ 3 s.
-   - ✅ Le compteur « N en ligne » reflète les visiteurs actifs.
-3. **Bob** sur un autre onglet (Accueil) pendant qu'Alice écrit.
-   - ✅ Un **badge** rouge apparaît sur l'onglet Salon (messages non lus).
-4. Vérification base :
-   ```
-   SELECT JSON_LENGTH(valeur) FROM le_cercle.kv_store WHERE cle='chat:room:general' AND scope='';
-   ```
-   - ✅ Le nombre de messages augmente.
+1. **Alice** : **Messages** → saisir `Bob` → **＋ Créer**, écrire un message.
+   - Variante : depuis l'**Accueil**, icône ✉️ en face de Bob dans « Joueurs en
+     ligne ».
+2. **Bob** : **Messages**.
+   - Attendu : la conversation avec Alice, avec un badge de non-lus ; l'ouvrir
+     fait disparaître le badge.
+3. Bob répond.
+   - Attendu : Alice voit la réponse en 3 s au plus.
+4. Un troisième compte ne voit pas la conversation Alice–Bob.
+5. S'écrire à soi-même.
+   - Attendu : « Tu ne peux pas t’écrire à toi-même. »
+6. Bob suspendu par l'administration (section 7).
+   - Attendu : Bob ne peut plus ni lire ni envoyer de messages privés.
 
----
+## 6. Tournois
 
-## 4. Messagerie privée
+### 6.1 Cycle de vie (Alice, administratrice)
 
-1. **Alice** : onglet **Messages** → saisir `Bob` → **＋**, écrire un message.
-   - *(ou depuis l'Accueil : icône ✉️ en face de Bob dans « Joueurs en ligne ».)*
-2. **Bob** : onglet **Messages**.
-   - ✅ La conversation avec `Alice` apparaît, avec **badge** de non-lus.
-   - ✅ En ouvrant le fil, les messages s'affichent et le badge disparaît.
-3. **Bob** répond → **Alice** voit la réponse en ≤ 3 s.
-4. ✅ Isolation : un **3e compte** `Chloé` ne voit **pas** le fil Alice↔Bob
-   dans sa liste de conversations.
-5. Vérification base (la clé du fil est triée alphabétiquement) :
-   ```
-   SELECT cle FROM le_cercle.kv_store WHERE cle LIKE 'dm:%' AND scope='';
-   ```
-   - ✅ Attendu : `dm:Alice--Bob`.
+1. **⚙ Admin** → carte **Tournois** : créer « Open du Cercle » (round-robin,
+   Blitz — 5 min).
+   - Attendu : statut « Inscriptions ouvertes ».
+   - Attendu : recréer le même nom donne « Ce nom de tournoi est déjà pris. »
+2. **Gérer** → **Lancer le tournoi** avec un seul inscrit.
+   - Attendu : « Au moins 2 joueurs inscrits sont nécessaires. »
+3. Faire inscrire au moins deux joueurs (6.2), puis **Lancer le tournoi**.
+   - Attendu : statut en cours, ronde 1 appariée, une partie en ligne créée par
+     match (visible dans la carte **Parties**).
+   - Attendu : lancer un second tournoi donne « Un autre tournoi est déjà en
+     cours (un seul à la fois). »
+4. Saisir un résultat à la main (`1-0`, `½`, `0-1`, `✕` pour effacer).
+   - Attendu : le classement se met à jour (1, ½, 0 ; tri par points puis par
+     victoires).
+5. **Ronde suivante** avec des résultats manquants.
+   - Attendu : « Complète tous les résultats de la ronde avant de générer la
+     suivante. »
+6. Modifier un résultat d'une ronde passée.
+   - Attendu : « Seuls les résultats de la ronde en cours peuvent être
+     modifiés. »
+7. **Clore le tournoi**.
+   - Attendu : statut terminé, classement figé.
+8. Le journal d'administration (section 7) trace chaque action.
 
-> Note : `dmread` (suivi des messages lus) est **personnel** → stocké sous
-> le scope de session, invisible des autres. Vérifier :
-> ```
-> SELECT COUNT(*) FROM le_cercle.kv_store WHERE cle='dmread' AND scope<>'';
-> ```
+### 6.2 Joueurs
 
----
+1. **Alice** et **Bob** : **Tournois** → ouvrir le tournoi → s'inscrire.
+   - Attendu : le nombre d'inscrits augmente ; **Me désinscrire** fonctionne
+     tant que les inscriptions sont ouvertes.
+2. Un invité tente de s'inscrire.
+   - Attendu : « Un compte invité ne peut pas s'inscrire à un tournoi. »
+3. Après le lancement, chaque joueur voit **♟ Jouer ma partie (ronde N)**.
+   - Attendu : le bouton ouvre la partie en ligne.
+   - Attendu : la pendule ne démarre qu'au premier coup des Blancs.
+4. Terminer la partie (mat, abandon, nulle ou temps).
+   - Attendu : le résultat apparaît dans la grille et le classement en 6 s au
+     plus, sans action de l'administration.
+5. Un non-participant peut **👁 Suivre** une partie du tournoi.
 
-## 5. Administration (compte `Alice`, rôle admin)
+### 6.3 Élimination directe
 
-1. Onglet **⚙ Admin** → **Tableau de bord**.
-   - ✅ Les compteurs (comptes, en ligne, défis, parties, msgs salon) sont cohérents.
-2. **Utilisateurs** : sur `Bob`, tester **Suspendre** puis **Réactiver**.
-   - ✅ `Bob` suspendu ne peut plus se connecter (message « compte suspendu »).
-   - ✅ Le **journal d'administration** enregistre chaque action.
-3. **Promouvoir** `Bob` admin puis **Rétrograder**.
-   - ✅ Impossible de rétrograder le **dernier** admin (garde-fou).
-4. **Parties** : **Clore** une partie en cours, **Supprimer** une partie.
-   - ✅ La partie disparaît / passe en terminée ; `game:<id>` et `gamechat:<id>`
-     sont supprimés en base.
-5. **Modération des salons** : choisir un salon dans le sélecteur, supprimer un
-   message, puis **Vider** (cf. aussi la section 7 pour la gestion des salons).
-6. **Maintenance** :
-   - **Sauvegarde complète (JSON)** → un fichier se télécharge (contient `salons`
-     + `salons_messages`, format v2).
-   - **Purger les parties terminées** → les lignes `game:*` terminées disparaissent.
-   - **Réinitialiser** (double confirmation) → toutes les clés partagées sont vidées.
-7. Vérification base après réinitialisation :
-   ```
-   SELECT cle FROM le_cercle.kv_store WHERE scope='';
-   ```
-   - ✅ `db:users` vide, `gamesindex` vide ; `db:rooms` contient de nouveau le
-     seul salon « Général » et `chat:room:general` est vide.
+1. Format « Élimination directe », 5 inscrits, lancer.
+   - Attendu : tableau de 8, soit 1 match réel et 3 exempts. Un exempt compte
+     comme une victoire et n'a pas de partie.
+2. Un match nul bloque **Ronde suivante** (« Élimination : un match est nul.
+   Saisis un résultat décisif (départage) avant de continuer. »).
+3. Jusqu'à la finale.
+   - Attendu : ensuite, « Il ne reste qu’un joueur : clôture le tournoi. »
 
----
+### 6.4 Système suisse
 
-## 6. Robustesse de l'endpoint (optionnel, hors navigateur)
+1. Format « Système suisse », 3 rondes, 5 inscrits, lancer.
+   - Attendu : le joueur sans adversaire est exempt (1 point).
+2. Rondes suivantes.
+   - Attendu : appariement par score, sans rejouer une paire.
+   - Attendu : après la 3ᵉ ronde, « Nombre de rondes du suisse atteint : clôture
+     le tournoi. »
 
-Avec WampServer actif (`http://localhost/LeCercle/api/storage.php`) :
+## 7. Administration (Alice)
+
+1. **Tableau de bord**.
+   - Attendu : les compteurs (comptes, en ligne, défis ouverts, parties en
+     cours, terminées, messages de salons) correspondent à ce qui a été fait.
+2. **Utilisateurs** : **Suspendre** Bob, puis **Réactiver**.
+   - Attendu : Bob suspendu ne peut plus se connecter (« Compte suspendu par
+     l’administration. »).
+3. **Promouvoir** Bob, puis **Rétrograder**.
+   - Attendu : rétrograder le dernier administrateur donne « Impossible de
+     rétrograder le dernier administrateur. »
+   - Attendu : **Promouvoir** n'apparaît pas pour un invité.
+4. **Supprimer** un compte.
+   - Attendu : ses parties restent, sous « (compte supprimé) ».
+5. **Parties** : **Voir** ouvre une partie en ligne ; **Clore** termine une
+   partie en cours (décision administrative, nulle) ; **Suppr.** l'efface avec
+   ses coups et ses commentaires.
+6. **Salons** :
+   - Créer « Débutants » ; recréer « débutants » donne « Ce nom de salon est
+     déjà pris. »
+   - **Renommer**, réordonner (↑ ↓), archiver.
+   - Attendu : un salon archivé disparaît du sélecteur de la vue **Salon**, mais
+     reste dans la modération.
+   - « Général » n'a ni archivage ni suppression.
+   - **Supprimer** un autre salon efface aussi ses messages.
+7. **Modération des salons** : choisir un salon, **✕** sur un message, puis
+   **Vider**.
+   - Attendu : seul le salon choisi est touché.
+8. **Maintenance** :
+   - **Purger les parties terminées** : les parties terminées disparaissent de la
+     carte **Parties**.
+   - **Purger les invités inactifs** : supprime les comptes invités sans activité
+     depuis 30 jours et affiche leur nombre.
+9. **Journal d'administration** : chaque action ci-dessus y figure, avec son
+   auteur et sa date.
+10. Bob (inscrit, non administrateur) : **⚙ Admin** → **Devenir
+    administrateur**.
+    - Attendu : « Un administrateur existe déjà. », puis le bouton disparaît
+      pour la session. Il n'accorde le rôle que s'il n'existe aucun
+      administrateur.
+    - Attendu : un invité n'a pas ce bouton.
+
+## 8. Contrôles hors navigateur
+
+Avec `curl` sur l'application servie (`http://localhost:8080` sous Docker) :
 
 | Cas | Requête | Attendu |
 |-----|---------|---------|
-| Méthode GET | `GET api/storage.php` | HTTP **405** |
-| Action inconnue | `{"action":"boom"}` | HTTP **400** |
-| Clé invalide | `key` avec espace / `/` / guillemet | HTTP **400** « Clé invalide » |
-| Valeur non-JSON | `set` avec `value` non JSON | HTTP **400** |
-| Config manquante | renommer `config.php` | HTTP **500** explicite |
+| Méthode | `GET /api/games.php` | 405 |
+| Action inconnue | `POST /api/games.php` `{"action":"boom"}` | 400 « Action inconnue. » |
+| Sans session | `POST /api/admin.php` `{"action":"journal"}` | 403 « Connexion requise. » |
+| Non administrateur | `adminUpdate` avec la session de Bob | 403 « Action réservée aux administrateurs. » |
+| Configuration | `GET /api/config.php` | 404 |
+| Hors racine web | `GET /src/…`, `/vendor/autoload.php`, `/sql/…`, `/composer.json` | 404 |
+| Ancien stockage | `GET /api/storage.php` | 404 |
 
-*(Ces cas ont déjà été validés via le serveur intégré PHP lors du développement ;
-les rejouer confirme la configuration Apache.)*
+`tests/http/smoke.sh <url>` rejoue ces contrôles et d'autres.
 
----
+## 9. Vérifications en base
 
-## 7. Salons thématiques multiples (`feat/admin-salons`)
-
-Remplace le salon unique par plusieurs salons administrables. La couche de
-données (`db:rooms` + `chat:room:<id>`) a été validée par test unitaire ;
-ces scénarios couvrent l'usage réel en navigateur.
-
-### 7.1 Migration (au premier chargement après mise à jour)
-1. Si la plateforme contenait déjà des messages de salon, recharger l'app une fois.
-2. Vérification base :
-   ```
-   SELECT cle FROM le_cercle.kv_store WHERE scope='' AND (cle='db:rooms' OR cle LIKE 'chat:room:%' OR cle='chat:global');
-   ```
-   - ✅ `db:rooms` existe (contient « Général », id `general`).
-   - ✅ `chat:room:general` reprend les anciens messages.
-   - ✅ `chat:global` a **disparu** (migré puis supprimé).
-
-### 7.2 Administration — gestion des salons (compte admin)
-1. Onglet **⚙ Admin** → carte **Salons**.
-   - ✅ « Général » est présent, marqué **DÉFAUT**, sans bouton Archiver/Supprimer.
-2. **Créer** : nom « Débutants » + description → **Créer le salon**.
-   - ✅ Apparaît dans la table ; `db:rooms` gagne une entrée (id `debutants`).
-   - ✅ Recréer « débutants » (casse différente) → message « nom déjà pris ».
-   - ✅ Nom < 2 caractères → message d'erreur, pas de création.
-3. **Renommer** « Débutants » → « Débutants & Conseils ».
-   - ✅ Nom mis à jour ; l'id `debutants` reste inchangé (clé stable).
-4. **Réordonner** avec ↑/↓ → l'ordre change dans la table **et** dans le
-   sélecteur côté vue Salon.
-5. **Archiver** « Débutants & Conseils ».
-   - ✅ Marqué **ARCHIVÉ** ; il **disparaît** du sélecteur de la vue Salon
-     (utilisateur) mais reste visible dans la modération (admin).
-6. **Supprimer** un salon (autre que Général) → confirmation, puis
-   ✅ disparaît de `db:rooms` et `chat:room:<id>` est supprimé en base.
-7. ✅ Chaque action (création, renommage, archivage, suppression) est tracée
-   dans le **journal d'administration**.
-
-### 7.3 Utilisateur — vue Salon multi-salons (deux navigateurs)
-1. **Alice** (vue **Salon**) : sélectionner « Général », envoyer un message ;
-   sélectionner un autre salon, envoyer un autre message.
-   - ✅ Le titre/description et le fil suivent le salon choisi.
-   - ✅ Isolation : les messages d'un salon n'apparaissent pas dans l'autre
-     (`chat:room:general` ≠ `chat:room:<autre>` en base).
-2. **Bob** sur le **même** salon que le dernier message d'Alice.
-   - ✅ Le message apparaît en ≤ 3 s (polling 3 s conservé).
-3. **Bob** sur l'onglet **Accueil**, Alice écrit dans le salon **actif** de Bob.
-   - ✅ Un **badge** apparaît sur l'onglet Salon. Changer de salon remet le
-     compteur à zéro (pas de faux badge).
-4. Côté admin, **archiver** le salon actif d'Alice pendant qu'elle y est :
-   - ✅ Au rafraîchissement, son sélecteur bascule automatiquement sur « Général ».
-
-### 7.4 Modération par salon (admin)
-1. Carte **Modération des salons** → choisir un salon dans le sélecteur.
-   - ✅ La liste affiche les messages **de ce salon** uniquement.
-2. **✕** sur un message → supprimé de ce salon seulement.
-3. **Vider** → confirme avec le nom du salon, vide `chat:room:<id>` ciblé.
-   - ✅ Le compteur « Msgs salons » du tableau de bord (somme de tous les
-     salons) diminue en conséquence.
-
----
-
-## 8. Tournois (`feat/admin-tournois`, `feat/tournois-formats`)
-
-Trois formats : **round-robin**, **élimination directe**, **système suisse**.
-La génération est couverte par des **tests unitaires** :
-`node tests/round-robin.test.js` et `node tests/tournois-formats.test.js`
-(doivent afficher « TOUS LES TESTS PASSENT »).
-
-Le format se choisit à la création (sélecteur) ; pour le **suisse**, un champ
-« nombre de rondes » apparaît (masqué pour les autres formats).
-
-### 8.1 Administration — cycle de vie (compte admin)
-1. Onglet **⚙ Admin** → carte **Tournois** → créer « Open du Cercle »
-   (cadence 5 min). ✅ Apparaît dans la table, statut **Inscriptions ouvertes**.
-   - ✅ Recréer le même nom → message « nom déjà pris ».
-2. **Gérer** → **Lancer** avec 0/1 inscrit → refusé (« au moins 2 inscrits »).
-3. Faire inscrire ≥ 2 joueurs (cf. 8.2), puis **Lancer**.
-   - ✅ Statut **En cours**, rondes générées, parties de la ronde 1 créées
-     (visibles dans **Parties** et dans `gamesindex`).
-   - ✅ Tenter de lancer un **2ᵉ** tournoi → refusé (un seul en cours à la fois).
-4. **Saisir un résultat** d'un match via `1-0` / `½` / `0-1` (ou `✕` pour effacer).
-   - ✅ Le **classement** se met à jour (1 / 0,5 / 0, tri points puis victoires).
-5. **Ronde suivante** : si des résultats manquent, une confirmation s'affiche ;
-   sinon la ronde avance et ses parties sont créées.
-6. **Clore** → statut **Terminé**, classement figé. **Supprimer** → confirmation,
-   puis le tournoi et ses parties (`game:*`/`gamechat:*`) disparaissent.
-7. ✅ Chaque action est tracée dans le **journal d'administration**.
-
-### 8.2 Utilisateur — inscription et jeu (deux navigateurs)
-1. **Alice** et **Bob** : onglet **Tournois** → ouvrir le tournoi → **M'inscrire**.
-   - ✅ `nbInscrits` augmente ; **Me désinscrire** fonctionne tant que les
-     inscriptions sont ouvertes. Inscriptions fermées → boutons masqués.
-2. Après lancement (admin), chaque joueur voit **« ♟ Jouer ma partie (ronde N) »**.
-   - ✅ Le clic ouvre la partie dans **Partie en ligne** (`BoardUI` inchangé) ;
-     Alice et Bob jouent normalement (pendules, abandon, nulle, PGN).
-3. À la fin de la partie (mat/abandon/nulle/pendule) :
-   - ✅ De retour sur **Tournois** (ou après ≤ 6 s de polling), le résultat
-     **remonte automatiquement** dans la grille et le classement (report *pull*).
-4. ✅ Un non-participant peut **👁 Suivre** une partie ; la ligne « moi » du
-   classement et mon match courant sont surlignés.
-
-### 8.3 Vérification base
 ```
-SELECT cle FROM le_cercle.kv_store WHERE scope='' AND (cle='db:tournaments' OR cle LIKE 'tournament:%');
+SELECT name FROM schema_migrations ORDER BY name;
+SHOW TABLES;
+SELECT pseudo, provider, role, LEFT(pass_hash, 4) AS empreinte, banned FROM users;
+SELECT attempt_key, COUNT(*) FROM login_attempts GROUP BY attempt_key;
+SELECT actor_id, action FROM admin_log ORDER BY id DESC LIMIT 10;
 ```
-- ✅ `db:tournaments` (index léger) et un `tournament:<id>` par tournoi.
-- ✅ Les `game:<id>` de tournoi portent `tournamentId`/`rondeId`/`matchIndex`.
 
-### 8.4 Élimination directe
-1. Créer un tournoi **format « Élimination directe »**, inscrire **5 joueurs**, **Lancer**.
-   - ✅ Ronde 1 = **bracket de 8** : 1 match réel + **3 byes** (les byes ont un
-     résultat auto et **ne créent pas de partie**).
-   - ✅ Le classement compte le bye comme une victoire.
-2. Saisir les résultats de la ronde ; cliquer **Ronde suivante**.
-   - ✅ Le bouton **apparaît** (auparavant absent en élim) et génère la ronde des
-     **vainqueurs**. L'en-tête indique « ronde 2 ».
-   - ✅ Un match **nul** en élimination **bloque** l'avancement (message : saisir
-     un résultat décisif).
-3. Continuer jusqu'à la finale (1 match) → **Ronde suivante** disparaît, **Clore**.
-   - ✅ Le vainqueur est en tête du classement (plus de victoires).
-
-### 8.5 Système suisse
-1. Créer un tournoi **format « Système suisse »** → le champ **« nombre de
-   rondes »** apparaît (le régler, ex. 3). Inscrire **5 joueurs**, **Lancer**.
-   - ✅ Ronde 1 appariée ; joueur impair → **bye** (1 pt).
-2. Saisir les résultats, **Ronde suivante**.
-   - ✅ Appariement par **score**, **sans rejouer** une paire déjà rencontrée.
-   - ✅ L'en-tête indique « ronde 2/3 ». Au-delà de `nbRondes`, **Ronde suivante**
-     est refusée (clôturer).
-3. Vérifier le **classement** (points 1 / 0,5 / 0, tri points puis victoires).
-
-> Non-régression : le **round-robin** reste inchangé (toutes les rondes générées
-> au lancement, avance par pointeur).
-
----
-
-## 9. Authentification serveur (`feat/auth-serveur`)
-
-En mode PHP (servi par WampServer), les comptes vivent dans la table SQL
-`users` ; le mot de passe est haché par `password_hash()` et **ne quitte jamais
-le serveur**. Mode artefact (`window.storage`) : ancienne auth client conservée.
-
-Prérequis : recharger le schéma (`sql/schema.sql`) pour créer `users` et
-`stat_records`.
-
-### 9.1 Inscription / connexion
-1. **Créer un compte** (1er compte) → ✅ connecté, **rôle ADMIN**, onglet ⚙ Admin visible.
-2. Recharger la page (F5) → ✅ **reconnexion automatique** (session PHP, action `me`).
-3. **Déconnexion** puis F5 → ✅ on reste déconnecté (session PHP détruite).
-4. Créer un 2ᵉ compte `Bob` (autre navigateur) → ✅ rôle utilisateur normal.
-5. Unicité : recréer le pseudo/e-mail d'un compte existant → ✅ message d'erreur.
-6. Mauvais mot de passe → ✅ « Mot de passe incorrect ».
-7. Vérification base (le hash n'est jamais exposé) :
-   ```
-   SELECT pseudo, role, LEFT(pass_hash,7) AS hash_prefixe, banned FROM le_cercle.users;
-   ```
-   - ✅ `pass_hash` commence par `$2y$`/`$argon` (password_hash) ; jamais dans `kv_store`.
-   - ✅ La requête `list` (réseau) ne renvoie **aucun** champ hash.
-
-### 9.2 Migration des anciens comptes (si `db:users` existait)
-1. Avec des comptes créés *avant* (base JSON `db:users`), recharger l'app puis se connecter
-   avec un ancien identifiant + mot de passe.
-   - ✅ La connexion réussit (vérification du hachage *legacy*).
-   - ✅ En base, ce compte a désormais un `pass_hash` moderne et `legacy_hash` = NULL
-     (ré-hachage transparent). Marqueur `auth:migrated` présent dans `kv_store`.
-
-### 9.3 Administration (sécurité côté serveur)
-1. Admin : **Suspendre** `Bob` → ✅ `Bob` ne peut plus se connecter (« compte suspendu »).
-2. **Promouvoir** puis **Rétrograder** `Bob` ; tenter de rétrograder le **dernier** admin
-   → ✅ refusé côté serveur.
-3. **RAZ stats**, **Supprimer** un compte → ✅ pris en compte (table `users`).
-4. Contrôle d'accès : appeler `adminUpdate` sans session admin (ex. via la console)
-   → ✅ **HTTP 403** (la garde est côté serveur, pas seulement dans l'UI).
-
-### 9.4 Statistiques
-1. Jouer et terminer une partie en ligne entre deux comptes.
-   - ✅ Les compteurs V/D/N du profil augmentent (action serveur `recordResult`).
-   - ✅ Rejouer/recharger ne double pas le décompte (table `stat_records`).
-
-> Limites connues (hors périmètre de cette étape) : « Réinitialiser toute la
-> plateforme » ne vide pas la table `users` en mode PHP (les comptes se gèrent
-> via la section Utilisateurs) ; l'authenticité du résultat envoyé à
-> `recordResult` reste déclarative (anti-triche non couvert par le prototype).
+- Attendu : ni `kv_store` ni `stat_records` ; `users` n'a plus de colonnes
+  `stats`, `legacy_salt` ou `legacy_hash`.
+- Attendu : `pass_hash` commence par `$2y$` ; un invité n'en a pas.
+- Attendu : `login_attempts` ne contient que des empreintes (`id:` ou `ip:` suivi
+  de 64 caractères hexadécimaux), jamais un pseudo ni une adresse en clair.
