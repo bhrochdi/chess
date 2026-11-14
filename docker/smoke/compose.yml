@@ -1,0 +1,19 @@
+# Surcharge du test de fumée : aucun port publié, le navigateur tourne sur le réseau Compose.
+# Usage : tests/front/smoke.sh (projet Compose lecercle-smoke)
+services:
+  web:
+    ports: !reset []
+    volumes:
+      - ./api/config.docker.example.php:/var/www/html/api/config.php:ro
+
+  smoke:
+    profiles: [smoke]
+    build:
+      context: .
+      dockerfile: docker/php/Dockerfile
+      target: smoke
+    environment:
+      BASE_URL: http://web/
+    depends_on: [web]
+    volumes:
+      - ./build/smoke:/out

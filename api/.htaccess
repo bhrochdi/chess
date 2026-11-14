@@ -1,0 +1,2 @@
+# Fichiers de configuration (identifiants) : jamais servis (404).
+RedirectMatch 404 "(?i)/api/config[^/]*\.php$"

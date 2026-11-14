@@ -1,0 +1,100 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: docker/php/Dockerfile
+          target: lint
+          push: false
+          cache-from: type=gha,scope=lint
+          cache-to: type=gha,mode=max,scope=lint
+      - name: Commitlint (commits de la PR)
+        if: github.event_name == 'pull_request'
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -euo pipefail
+          npm install --prefix "$RUNNER_TEMP/commitlint" --ignore-scripts --no-package-lock \
+            @commitlint/cli@19 @commitlint/config-conventional@19
+          export NODE_PATH="$RUNNER_TEMP/commitlint/node_modules"
+          "$RUNNER_TEMP/commitlint/node_modules/.bin/commitlint" --config commitlint.config.cjs \
+            --from "$BASE_SHA" --to "$HEAD_SHA" --verbose
+
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        target: [test, jstest]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: docker/php/Dockerfile
+          target: ${{ matrix.target }}
+          push: false
+          cache-from: type=gha,scope=${{ matrix.target }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.target }}
+
+  front:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: docker/php/Dockerfile
+          target: jscheck
+          push: false
+          cache-from: type=gha,scope=jscheck
+          cache-to: type=gha,mode=max,scope=jscheck
+      - name: Test de fumée navigateur
+        run: |
+          cp .env.example .env
+          tests/front/smoke.sh
+
+  integration:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: cp .env.example .env
+      - run: docker compose build web
+      - run: docker compose run --rm --no-deps -e COMPOSER_HOME=/tmp/composer web composer install --no-interaction --prefer-dist
+      - name: Migrations (premier passage)
+        run: docker compose run --rm web php bin/migrate.php
+      - name: Migrations (second passage, rien à appliquer)
+        run: docker compose run --rm web php bin/migrate.php | grep -qx 'Base à jour.'
+      - run: docker compose run --rm web composer test:integration
+      - run: docker compose up -d --wait
+      - name: Contrôle HTTP
+        run: tests/http/smoke.sh http://localhost:8080
+      - if: failure()
+        run: docker compose logs
+      - if: always()
+        run: docker compose down -v

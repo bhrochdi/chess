@@ -1,0 +1,33 @@
+{
+    "name": "lecercle/le-cercle",
+    "description": "Le Cercle — plateforme d'échecs en ligne",
+    "type": "project",
+    "require": {
+        "php": ">=8.3"
+    },
+    "autoload": {
+        "psr-4": {
+            "LeCercle\\": "src/"
+        }
+    },
+    "autoload-dev": {
+        "psr-4": {
+            "LeCercle\\Tests\\": "tests/"
+        }
+    },
+    "scripts": {
+        "test": "phpunit --no-coverage --testsuite Unit --exclude-group slow",
+        "test:slow": "phpunit --no-coverage --testsuite Unit --group slow",
+        "test:coverage": "@php -d extension=pcov -d pcov.enabled=1 vendor/bin/phpunit --coverage-html build/coverage --testsuite Unit --exclude-group slow",
+        "test:integration": "phpunit --no-coverage --testsuite Integration",
+        "lint": [
+            "php-cs-fixer fix --dry-run --diff",
+            "phpstan analyse --memory-limit=1G"
+        ]
+    },
+    "require-dev": {
+        "phpunit/phpunit": "^11.5",
+        "phpstan/phpstan": "^2.1",
+        "friendsofphp/php-cs-fixer": "^3.64"
+    }
+}

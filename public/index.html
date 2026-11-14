@@ -1,0 +1,494 @@
+<!DOCTYPE html>
+<html lang="fr" data-theme="bois">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<!-- Anti-flash : applique le thème mémorisé dès le 1er paint, avant toute feuille de style -->
+<script>
+  (function(){
+    try {
+      var t = localStorage.getItem('lecercle:theme') || 'bois';
+      document.documentElement.setAttribute('data-theme', t);
+    } catch(e){ document.documentElement.setAttribute('data-theme','bois'); }
+  })();
+</script>
+<title>Le Cercle — Plateforme d'Échecs en ligne</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@400;500;600;700&family=Spectral:ital,wght@0,300;0,400;0,500;0,600;1,400&display=swap" rel="stylesheet">
+<!-- Polices additionnelles des thèmes (Clair, Marbre, Nocturne) — cf. themes.css -->
+<link href="https://fonts.googleapis.com/css2?family=Newsreader:ital,opsz,wght@0,6..72,500;0,6..72,600;1,6..72,500&family=Hanken+Grotesk:wght@400;500;600;700&family=Jost:wght@300;400;500;600&family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="css/styles.css">
+</head>
+<body>
+
+<header>
+  <div class="theme-switch" role="group" aria-label="Choisir un thème">
+    <button type="button" class="theme-opt" data-set-theme="bois"     title="Bois &amp; or">●</button>
+    <button type="button" class="theme-opt" data-set-theme="clair"    title="Clair">●</button>
+    <button type="button" class="theme-opt" data-set-theme="marbre"   title="Marbre &amp; laiton">●</button>
+    <button type="button" class="theme-opt" data-set-theme="nocturne" title="Nocturne">●</button>
+  </div>
+  <h1>Le<span class="knight">♞</span>Cercle</h1>
+  <p>Plateforme d'échecs en ligne</p>
+  <div class="rule"></div>
+</header>
+
+<nav>
+  <button data-view="home" class="active">Accueil</button>
+  <button data-view="local">Jeu local &amp; IA</button>
+  <button data-view="online" id="navOnline">Partie en ligne</button>
+  <button data-view="salon">Salon <span class="badge" id="salonBadge" hidden></span></button>
+  <button data-view="dm">Messages <span class="badge" id="dmBadge" hidden></span></button>
+  <button data-view="tournois">Tournois</button>
+  <button data-view="admin" id="navAdmin" style="display:none">⚙ Admin</button>
+</nav>
+
+<!-- ================= ACCUEIL / LOBBY ================= -->
+<div class="view active" id="view-home">
+  <div class="stack">
+    <div class="card" id="profileCard">
+      <h2>Mon profil</h2>
+      <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap">
+        <span id="profileLine" class="small">Connecte-toi pour accéder aux fonctions en ligne.</span>
+        <button class="primary" id="btnAuth">Connexion / Créer un compte</button>
+        <button id="btnLogout" style="display:none">Déconnexion</button>
+      </div>
+      <p class="small" style="margin-top:10px">
+        ℹ️ Les parties en ligne, le salon et la messagerie utilisent le <strong>stockage partagé</strong> de cette
+        application : les contenus publiés sont visibles par les autres utilisateurs (la messagerie n'est pas chiffrée).
+        La synchronisation se fait toutes les 2 à 3 secondes.
+      </p>
+    </div>
+
+    <div class="grid2">
+      <div class="card">
+        <h2>Créer une partie en ligne</h2>
+        <div class="stack" style="gap:10px">
+          <div>
+            <label class="opt" for="newTc">Cadence</label>
+            <select id="newTc" style="width:100%">
+              <option value="180|2">Blitz — 3 min + 2 s</option>
+              <option value="300|0" selected>Blitz — 5 min</option>
+              <option value="600|0">Rapide — 10 min</option>
+              <option value="900|10">Rapide — 15 min + 10 s</option>
+              <option value="inf">Sans pendule</option>
+            </select>
+          </div>
+          <div>
+            <label class="opt" for="newColor">Je joue</label>
+            <select id="newColor" style="width:100%">
+              <option value="random" selected>Couleur aléatoire</option>
+              <option value="w">Les Blancs</option>
+              <option value="b">Les Noirs</option>
+            </select>
+          </div>
+          <button class="primary" id="btnCreateGame">♟ Créer et attendre un adversaire</button>
+        </div>
+      </div>
+
+      <div class="card">
+        <h2>Joueurs en ligne</h2>
+        <div class="list" id="playersList" data-empty="Personne en ligne pour le moment."></div>
+      </div>
+    </div>
+
+    <div class="grid2">
+      <div class="card">
+        <h2>Parties ouvertes — défis à relever</h2>
+        <div class="list" id="openGames" data-empty="Aucun défi en attente. Crée le tien !"></div>
+      </div>
+      <div class="card">
+        <h2>Parties en cours — à regarder</h2>
+        <div class="list" id="liveGames" data-empty="Aucune partie en cours."></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ================= JEU LOCAL ================= -->
+<div class="view" id="view-local">
+  <div class="game-layout">
+    <div class="board-col">
+      <div class="clockbar" id="localClocks"></div>
+      <div class="board-wrap">
+        <div class="board-frame">
+          <div class="ranks"></div>
+          <div class="board" id="localBoard" role="grid" aria-label="Échiquier local"></div>
+          <div></div>
+          <div class="files"></div>
+        </div>
+      </div>
+    </div>
+    <div class="side">
+      <div class="card">
+        <h2>Partie locale</h2>
+        <div class="status-line" id="localStatus"></div>
+        <div class="captures" style="margin-top:10px">
+          <div class="cap-row"><span class="lbl">Blancs</span><span data-cap="w"></span><span class="score" data-score="w"></span></div>
+          <div class="cap-row"><span class="lbl">Noirs</span><span data-cap="b"></span><span class="score" data-score="b"></span></div>
+        </div>
+      </div>
+      <div class="scoresheet">
+        <h2>Feuille de partie</h2>
+        <div class="movelist" id="localMoves"></div>
+      </div>
+      <div class="card stack" style="gap:10px">
+        <div>
+          <label class="opt" for="localMode">Adversaire</label>
+          <select id="localMode" style="width:100%">
+            <option value="human">Deux joueurs (même écran)</option>
+            <option value="ai-2">Ordinateur — débutant</option>
+            <option value="ai-3" selected>Ordinateur — club</option>
+            <option value="ai-4">Ordinateur — maître (réflexion longue)</option>
+          </select>
+        </div>
+        <div>
+          <label class="opt" for="localTc">Cadence</label>
+          <select id="localTc" style="width:100%">
+            <option value="inf" selected>Sans pendule</option>
+            <option value="180|2">3 min + 2 s</option>
+            <option value="300|0">5 min</option>
+            <option value="600|0">10 min</option>
+            <option value="900|10">15 min + 10 s</option>
+          </select>
+        </div>
+        <div class="toolbar">
+          <button class="primary" id="btnLocalNew">Nouvelle partie</button>
+          <button id="btnLocalUndo">↶ Annuler</button>
+        </div>
+        <div class="toolbar">
+          <button id="btnLocalFlip">⇅ Retourner</button>
+          <button id="btnLocalPgn">⤓ Export PGN</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ================= PARTIE EN LIGNE ================= -->
+<div class="view" id="view-online">
+  <div class="card" id="onlineEmpty">
+    <h2>Partie en ligne</h2>
+    <p class="small">Aucune partie active. Va sur l'<strong>Accueil</strong> pour créer un défi, en rejoindre un, ou regarder une partie en cours.</p>
+  </div>
+  <div class="game-layout" id="onlineGameUI" style="display:none">
+    <div class="board-col">
+      <div class="clockbar" id="onlineClocks"></div>
+      <div class="board-wrap">
+        <div class="board-frame">
+          <div class="ranks"></div>
+          <div class="board" id="onlineBoard" role="grid" aria-label="Échiquier en ligne"></div>
+          <div></div>
+          <div class="files"></div>
+        </div>
+      </div>
+      <div class="card">
+        <div class="status-line" id="onlineStatus"></div>
+        <div class="captures" style="margin-top:8px">
+          <div class="cap-row"><span class="lbl">Blancs</span><span data-cap="w"></span><span class="score" data-score="w"></span></div>
+          <div class="cap-row"><span class="lbl">Noirs</span><span data-cap="b"></span><span class="score" data-score="b"></span></div>
+        </div>
+      </div>
+    </div>
+    <div class="side">
+      <div class="card">
+        <h2 id="onlineTitle">Partie</h2>
+        <div class="toolbar">
+          <button id="btnResign" class="danger">⚐ Abandonner</button>
+          <button id="btnDraw">½ Proposer nulle</button>
+        </div>
+        <div class="toolbar" style="margin-top:8px">
+          <button id="btnOnlinePgn">⤓ Export PGN</button>
+          <button id="btnOnlineLeave">← Quitter la vue</button>
+        </div>
+      </div>
+      <div class="scoresheet">
+        <h2>Feuille de partie</h2>
+        <div class="movelist" id="onlineMoves"></div>
+      </div>
+      <div class="card chatbox" style="min-height:240px">
+        <h2>💬 Commentaires en direct</h2>
+        <div class="chatlog" id="gameChatLog" data-empty="Joueurs et spectateurs peuvent commenter ici."></div>
+        <div class="chatinput">
+          <input type="text" id="gameChatInput" maxlength="240" placeholder="Commenter la partie…">
+          <button class="primary" id="gameChatSend">➤</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ================= SALON ================= -->
+<div class="view" id="view-salon">
+  <div class="card chatbox" style="max-width:760px; margin:0 auto; min-height:480px">
+    <h2 style="display:flex; align-items:center; gap:10px; flex-wrap:wrap">
+      <span>☕ Salon :</span>
+      <select id="salonRoomSel" style="font-size:13px; padding:4px 8px"></select>
+      <span class="small" id="salonOnline"></span>
+    </h2>
+    <p class="small" id="salonDesc" style="margin:-4px 0 8px"></p>
+    <div class="chatlog" id="salonLog" style="max-height:430px" data-empty="Le salon est calme… Lance la conversation !"></div>
+    <div class="chatinput">
+      <input type="text" id="salonInput" maxlength="300" placeholder="Écrire au salon…">
+      <button class="primary" id="salonSend">➤</button>
+    </div>
+  </div>
+</div>
+
+<!-- ================= MESSAGES PRIVÉS ================= -->
+<div class="view" id="view-dm">
+  <div class="card">
+    <h2>✉️ Messagerie privée <span class="small">(non chiffrée)</span></h2>
+    <div class="dm-layout">
+      <div>
+        <div style="display:flex; gap:8px; margin-bottom:10px">
+          <input type="text" id="dmNewPeer" placeholder="Pseudo…" maxlength="16" style="flex:1">
+          <button id="dmNewBtn">＋</button>
+        </div>
+        <div class="threads list" id="dmThreads" data-empty="Aucune conversation."></div>
+      </div>
+      <div class="chatbox" style="border-left:1px solid var(--panel-edge); padding-left:16px">
+        <h2 id="dmTitle">Sélectionne une conversation</h2>
+        <div class="chatlog" id="dmLog" style="max-height:380px" data-empty=""></div>
+        <div class="chatinput">
+          <input type="text" id="dmInput" maxlength="300" placeholder="Message privé…" disabled>
+          <button class="primary" id="dmSend" disabled>➤</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ================= TOURNOIS ================= -->
+<div class="view" id="view-tournois">
+  <div class="stack">
+    <div class="card">
+      <h2>🏆 Tournois</h2>
+      <p class="small" id="tournLoginHint" style="display:none">Connecte-toi pour t'inscrire à un tournoi.</p>
+      <div class="list" id="tournList" data-empty="Aucun tournoi pour le moment."></div>
+    </div>
+    <div class="card" id="tournDetailCard" style="display:none">
+      <div id="tournDetail"></div>
+    </div>
+  </div>
+</div>
+
+<!-- ================= ADMINISTRATION ================= -->
+<div class="view" id="view-admin">
+  <div class="stack">
+    <div class="card" id="adminDenied">
+      <h2>⚙ Administration</h2>
+      <p class="small">Accès réservé aux administrateurs. Connecte-toi avec un compte disposant du rôle
+        <strong>admin</strong> — le premier compte créé sur la plateforme reçoit ce rôle automatiquement.</p>
+    </div>
+
+    <div class="card" id="admClaimBox" style="display:none">
+      <h2>⚙ Initialisation</h2>
+      <p class="small" style="margin-bottom:10px">Tant qu'aucun administrateur n'existe, un compte inscrit
+        peut revendiquer ce rôle pour initialiser la plateforme.</p>
+      <button class="primary" id="adminClaim">Devenir administrateur</button>
+    </div>
+
+    <div id="adminPanels" style="display:none" class="stack">
+      <div class="card">
+        <h2>Tableau de bord</h2>
+        <div class="stat-grid" id="admStats"></div>
+      </div>
+
+      <div class="card">
+        <h2>Utilisateurs</h2>
+        <div style="overflow-x:auto">
+          <table class="admin-table">
+            <thead><tr><th>Pseudo</th><th>E-mail</th><th>Fournisseur</th><th>V/D/N</th><th>Créé le</th><th>Actions</th></tr></thead>
+            <tbody id="admUsers"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="card">
+        <h2>Salons</h2>
+        <div style="display:flex; gap:8px; flex-wrap:wrap; margin-bottom:12px">
+          <input type="text" id="admRoomName" maxlength="40" placeholder="Nom du salon" style="flex:1; min-width:160px">
+          <input type="text" id="admRoomDesc" maxlength="120" placeholder="Description (facultatif)" style="flex:2; min-width:200px">
+          <button class="primary" id="admRoomCreate">＋ Créer le salon</button>
+        </div>
+        <p class="small" id="admRoomMsg" style="color:var(--check); min-height:16px; margin-bottom:8px"></p>
+        <div style="overflow-x:auto">
+          <table class="admin-table">
+            <thead><tr><th>Ordre</th><th>Nom</th><th>Description</th><th>État</th><th>Actions</th></tr></thead>
+            <tbody id="admRooms"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="card">
+        <h2>Tournois</h2>
+        <div style="display:flex; gap:8px; flex-wrap:wrap; margin-bottom:8px">
+          <input type="text" id="admTournNom" maxlength="40" placeholder="Nom du tournoi" style="flex:2; min-width:160px">
+          <select id="admTournTc" style="flex:1; min-width:150px">
+            <option value="180|2">Blitz — 3 min + 2 s</option>
+            <option value="300|0" selected>Blitz — 5 min</option>
+            <option value="600|0">Rapide — 10 min</option>
+            <option value="900|10">Rapide — 15 min + 10 s</option>
+            <option value="inf">Sans pendule</option>
+          </select>
+          <select id="admTournFormat" style="flex:1; min-width:160px">
+            <option value="round-robin" selected>Round-robin (toutes rondes)</option>
+            <option value="elimination">Élimination directe</option>
+            <option value="suisse">Système suisse</option>
+          </select>
+          <input type="number" id="admTournRondes" min="2" max="15" value="5" title="Nombre de rondes (suisse)" style="width:130px; display:none" placeholder="Rondes">
+          <button class="primary" id="admTournCreate">＋ Créer</button>
+        </div>
+        <input type="text" id="admTournDesc" maxlength="140" placeholder="Description (facultatif)" style="width:100%; margin-bottom:8px">
+        <p class="small" id="admTournMsg" style="color:var(--check); min-height:16px; margin-bottom:8px"></p>
+        <div style="overflow-x:auto">
+          <table class="admin-table">
+            <thead><tr><th>Nom</th><th>Format</th><th>Statut</th><th>Inscrits</th><th>Actions</th></tr></thead>
+            <tbody id="admTournList"></tbody>
+          </table>
+        </div>
+        <div id="admTournDetail" style="margin-top:14px"></div>
+      </div>
+
+      <div class="grid2">
+        <div class="card">
+          <h2>Parties</h2>
+          <div class="list" id="admGames" data-empty="Aucune partie." style="max-height:280px"></div>
+        </div>
+        <div class="card">
+          <h2>Modération des salons</h2>
+          <div style="display:flex; gap:8px; align-items:center; margin-bottom:8px">
+            <select id="admModRoom" style="font-size:13px; padding:4px 8px; flex:1"></select>
+            <button id="admClearSalon" class="danger" style="padding:4px 10px; font-size:12px">Vider</button>
+          </div>
+          <div class="list" id="admSalon" data-empty="Aucun message." style="max-height:240px"></div>
+        </div>
+      </div>
+
+      <div class="grid2">
+        <div class="card">
+          <h2>Journal d'administration</h2>
+          <div class="list" id="admLog" data-empty="Aucune action enregistrée." style="max-height:220px"></div>
+        </div>
+        <div class="card">
+          <h2>Maintenance</h2>
+          <div class="toolbar">
+            <button id="admPurge">🧹 Purger les parties terminées</button>
+            <button id="admPurgeGuests">🧹 Purger les invités inactifs</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ================= MODALES ================= -->
+<div class="overlay" id="promoOverlay">
+  <div class="modal">
+    <h3>Promotion du pion</h3>
+    <div class="promo-choices" id="promoChoices"></div>
+  </div>
+</div>
+
+<div class="overlay" id="endOverlay">
+  <div class="modal">
+    <h3 id="endTitle"></h3>
+    <p id="endText"></p>
+    <button class="primary" id="endClose">Fermer</button>
+  </div>
+</div>
+
+<div class="overlay" id="authOverlay">
+  <div class="modal" style="width:430px; text-align:left">
+    <button class="modal-close" id="authClose" aria-label="Fermer">✕</button>
+    <h3 style="text-align:center">Bienvenue au Cercle</h3>
+
+    <div id="authForm">
+      <div class="auth-tabs">
+        <button id="tabLogin" class="active">Connexion</button>
+        <button id="tabRegister">Créer un compte</button>
+      </div>
+      <div class="fields">
+        <div id="fEmail" style="display:none"><label class="opt">Adresse e-mail</label><input type="text" id="authEmail" maxlength="60" placeholder="toi@exemple.com"></div>
+        <div><label class="opt" id="authPseudoLabel">Pseudo ou e-mail</label><input type="text" id="authPseudo" maxlength="60" placeholder="ex. CavalierNoir"></div>
+        <div><label class="opt">Mot de passe</label><input type="password" id="authPass" maxlength="64" placeholder="6 caractères minimum"></div>
+      </div>
+      <p class="small" id="authMsg" style="color:var(--check); min-height:16px; margin-bottom:8px"></p>
+      <button class="primary" id="authSubmit" style="width:100%">Se connecter</button>
+      <button id="authGuest" style="width:100%; margin-top:8px">Continuer en invité</button>
+    </div>
+  </div>
+</div>
+
+<div class="overlay" id="confirmOverlay">
+  <div class="modal">
+    <h3 id="confirmTitle"></h3>
+    <p id="confirmText"></p>
+    <div style="display:flex; gap:10px; justify-content:center">
+      <button id="confirmNo">Annuler</button>
+      <button class="primary" id="confirmYes">Confirmer</button>
+    </div>
+  </div>
+</div>
+
+<!-- ============================================================
+     MOTEUR D'ÉCHECS — code pur (sans DOM), réutilisé tel quel
+     dans un Web Worker pour l'IA.
+============================================================ -->
+
+<!-- ============================================================
+     APPLICATION
+============================================================ -->
+<!-- Noyau partagé -->
+<script src="js/core/util.js"></script>
+<script src="js/core/modals.js"></script>
+<script src="js/core/api.js"></script>
+<script src="js/core/fen.js"></script>
+<script src="js/core/game-state.js"></script>
+<script src="js/core/server-board.js"></script>
+<script src="js/core/navigation.js"></script>
+
+<!-- Vue Jeu local et IA -->
+<script src="js/views/local.js"></script>
+
+<!-- Noyau partagé -->
+<script src="js/core/auth.js"></script>
+<script src="js/core/presence.js"></script>
+
+<!-- Vue Accueil -->
+<script src="js/views/home.js"></script>
+
+<!-- Noyau partagé -->
+<script src="js/core/chat-log.js"></script>
+
+<!-- Vue Partie en ligne -->
+<script src="js/views/online.js"></script>
+
+<!-- Noyau partagé -->
+
+<!-- Vue Salon -->
+<script src="js/views/salon.js"></script>
+
+<!-- Vue Messages -->
+<script src="js/views/messages.js"></script>
+
+<!-- Noyau partagé -->
+<script src="js/core/tournament-view.js"></script>
+
+<!-- Vue Administration -->
+<script src="js/views/admin.js"></script>
+<script src="js/views/admin-rooms.js"></script>
+<script src="js/views/admin-tournaments.js"></script>
+
+<!-- Vue Tournois -->
+<script src="js/views/tournaments.js"></script>
+
+<!-- Démarrage -->
+<script src="js/main.js"></script>
+
+<!-- ===================== Sélecteur de thème ===================== -->
+<script src="js/theme-switcher.js"></script>
+</body>
+</html>
