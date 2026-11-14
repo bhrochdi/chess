@@ -61,7 +61,9 @@ final class MigratorTest extends DatabaseTestCase
         [$code, , $stderr] = self::runCli(['DB_PASS' => 'mot-de-passe-faux']);
 
         self::assertSame(1, $code);
-        self::assertStringContainsString('Access denied', $stderr);
+        // Code d'erreur et non texte : le refus survient avant la session, donc
+        // dans la langue du serveur (« Accès refusé » avec lc_messages=fr_FR).
+        self::assertStringContainsString('[1045]', $stderr);
     }
 
     public function testCliReportsAnUpToDateDatabase(): void

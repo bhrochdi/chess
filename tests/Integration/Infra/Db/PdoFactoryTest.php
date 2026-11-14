@@ -19,6 +19,8 @@ final class PdoFactoryTest extends TestCase
 
         self::assertSame('le_cercle_test', self::scalar($pdo, 'SELECT DATABASE()'));
         self::assertSame('+00:00', self::scalar($pdo, 'SELECT @@session.time_zone'));
+        self::assertSame('en_US', self::scalar($pdo, 'SELECT @@session.lc_messages'));
+        self::assertSame(PdoFactory::SQL_MODE, self::scalar($pdo, 'SELECT @@session.sql_mode'));
         // Le pilote MySQL renvoie 0 et non false.
         self::assertFalse((bool) $pdo->getAttribute(PDO::ATTR_EMULATE_PREPARES));
         self::assertSame(PDO::ERRMODE_EXCEPTION, $pdo->getAttribute(PDO::ATTR_ERRMODE));
