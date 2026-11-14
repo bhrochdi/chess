@@ -9,6 +9,7 @@ use LeCercle\Chess\Result;
 use LeCercle\Game\ChessRules;
 use LeCercle\Game\Game;
 use LeCercle\Infra\Game\PdoGameRepository;
+use LeCercle\Infra\Game\PdoResultArchive;
 use LeCercle\Infra\User\PdoGameStats;
 use LeCercle\Tests\Integration\DatabaseTestCase;
 
@@ -41,5 +42,30 @@ final class PdoGameStatsTest extends DatabaseTestCase
         self::assertArrayNotHasKey('dave', $stats);
         self::assertArrayNotHasKey('carol', $stats);
         self::assertSame([], (new PdoGameStats(self::pdo()))->forUsers([]));
+    }
+
+    public function testForUsersAddsArchivedResultsOfPurgedGames(): void
+    {
+        $now = new \DateTimeImmutable('2026-11-12 10:00:00.000', new \DateTimeZone('UTC'));
+        $insertUser = self::pdo()->prepare(
+            'INSERT INTO users (id, pseudo, email, provider, role, pass_hash, banned, created_at)
+             VALUES (?, ?, ?, ?, ?, NULL, 0, ?)',
+        );
+        foreach (['alice', 'bob', 'carol'] as $id) {
+            $insertUser->execute([$id, $id, $id . '@x.fr', 'local', 'user', 1794477601500]);
+        }
+        $game = Game::online('g0000000000b1', 'alice', Color::White, null, $now);
+        $game->join('bob', $now);
+        $game->closeByAdmin(Result::WhiteWins, $now);
+        (new PdoGameRepository(self::pdo(), ChessRules::standard()))->add($game);
+        $archive = new PdoResultArchive(self::pdo());
+        $archive->keep('alice', 'bob', Result::Draw);
+        $archive->keep('carol', 'alice', Result::WhiteWins);
+
+        $stats = (new PdoGameStats(self::pdo()))->forUsers(['alice', 'bob', 'carol']);
+
+        self::assertSame(['w' => 1, 'l' => 1, 'd' => 1], $stats['alice']->toArray());
+        self::assertSame(['w' => 0, 'l' => 1, 'd' => 1], $stats['bob']->toArray());
+        self::assertSame(['w' => 1, 'l' => 0, 'd' => 0], $stats['carol']->toArray());
     }
 }

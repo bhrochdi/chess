@@ -235,7 +235,8 @@ tel quel. Aucune réponse 500.
    - Attendu : seul le salon choisi est touché.
 8. **Maintenance** :
    - **Purger les parties terminées** : les parties terminées disparaissent de la
-     carte **Parties**.
+     carte **Parties** ; les victoires, défaites et nulles affichées dans la
+     carte **Comptes** ne changent pas.
    - **Purger les invités inactifs** : supprime les comptes invités sans activité
      depuis 30 jours et affiche leur nombre.
 9. **Journal d'administration** : chaque action ci-dessus y figure, avec son

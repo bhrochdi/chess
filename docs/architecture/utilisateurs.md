@@ -101,8 +101,13 @@ Une opération inconnue répond 422 « Opération inconnue. », un compte inconn
 ## Statistiques
 
 Les victoires, défaites et nulles d'un compte se calculent à chaque lecture
-depuis les parties en ligne terminées (port `GameStats`, une requête par
-réponse) ; les parties locales et contre l'ordinateur ne comptent pas.
+(port `GameStats`, deux requêtes par réponse) : les parties en ligne terminées
+encore en base, plus les résultats des parties purgées, cumulés par compte dans
+`archived_stats` (migration `401-statistiques-archivees.sql`). La purge des
+parties terminées ne change donc pas les statistiques ; la suppression d'une
+partie précise par un administrateur la retire du compte. Les parties locales
+et contre l'ordinateur ne comptent pas. La ligne de `archived_stats` part avec
+le compte (clé étrangère `ON DELETE CASCADE`).
 
 ## Côté navigateur
 

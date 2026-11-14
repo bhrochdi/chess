@@ -112,12 +112,11 @@ final class PdoGameRepository implements GameRepository
         $this->pdo->prepare('DELETE FROM games WHERE id = ?')->execute([$id]);
     }
 
-    public function finishedIds(): array
+    public function finished(): array
     {
-        $stmt = $this->pdo->prepare("SELECT id FROM games WHERE status = 'finished' ORDER BY id");
-        $stmt->execute();
-
-        return array_values(array_map('strval', $stmt->fetchAll(\PDO::FETCH_COLUMN)));
+        return $this->summaries($this->pdo->prepare(
+            'SELECT ' . self::COLUMNS . " FROM games WHERE status = 'finished' ORDER BY id FOR UPDATE",
+        ));
     }
 
     public function all(int $limit): array

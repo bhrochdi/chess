@@ -7,7 +7,10 @@ namespace LeCercle\Infra\User;
 use LeCercle\User\GameStats;
 use LeCercle\User\Stats;
 
-/** Statistiques lues dans `games` : parties en ligne terminées, une seule requête. */
+/**
+ * Statistiques : parties en ligne terminées de `games`, plus les résultats des parties purgées
+ * cumulés dans `archived_stats` ; deux requêtes, quel que soit le nombre de comptes.
+ */
 final class PdoGameStats implements GameStats
 {
     public function __construct(private readonly \PDO $pdo) {}
@@ -36,6 +39,16 @@ final class PdoGameStats implements GameStats
                 $index = $row['result'] === '1/2-1/2' ? 2 : ($won ? 0 : 1);
                 ++$counts[$id][$index];
             }
+        }
+
+        $archived = $this->pdo->prepare("SELECT user_id, wins, losses, draws FROM archived_stats WHERE user_id IN ($marks)");
+        $archived->execute($userIds);
+        foreach ($archived->fetchAll() as $row) {
+            $id = (string) $row['user_id'];
+            $counts[$id] ??= [0, 0, 0];
+            $counts[$id][0] += (int) $row['wins'];
+            $counts[$id][1] += (int) $row['losses'];
+            $counts[$id][2] += (int) $row['draws'];
         }
 
         return array_map(static fn(array $c): Stats => new Stats($c[0], $c[1], $c[2]), $counts);

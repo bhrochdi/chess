@@ -12,6 +12,7 @@ use LeCercle\Game\GameService;
 use LeCercle\Game\GameViews;
 use LeCercle\Game\MinimaxComputerPlayers;
 use LeCercle\Infra\Game\PdoGameRepository;
+use LeCercle\Infra\Game\PdoResultArchive;
 use LeCercle\Infra\Infrastructure;
 use LeCercle\Infra\Tournament\PdoTournamentRepository;
 use LeCercle\Shared\TimeControl;
@@ -46,6 +47,7 @@ final class GameTournamentServices implements GameEndListener, PairingGames
                 $random,
                 new GameViews($this->infra->members(), $rules),
                 $this,
+                new PdoResultArchive($this->infra->pdo()),
             );
         }
 
