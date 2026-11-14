@@ -18,6 +18,7 @@ branchés par `api/games.php`.
 | `ChessRules` | Façade du domaine échecs : coups légaux, SAN, fin de partie. |
 | `ComputerPlayers`, `MinimaxComputerPlayers` | Adversaire ordinateur d'un niveau donné (le minimax de `src/Chess/Ai`). |
 | `GameRepository` | Port de stockage, implémenté par `Infra\Game\PdoGameRepository`. |
+| `ResultArchive` | Port : garde le résultat d'une partie en ligne purgée (`Infra\Game\PdoResultArchive`, table `archived_stats`). |
 | `GameViews`, `GameSummary` | JSON d'une partie et des listes ; un seul `Members::findMany()` par réponse. |
 | `PgnWriter` | Export PGN. |
 | `Infra\Http\Api\GamesController` | Contrat HTTP : une action, une méthode du service. |
@@ -82,8 +83,13 @@ même transaction :
 |--------|------------|---------|-------------------|
 | `adminList` | | `{ games }` : toutes les parties, tous modes, 200 au plus | |
 | `adminClose` | `id`, `result?` (`1/2-1/2` par défaut) | `{ game }` terminée, `reason: "admin"` ; 409 si déjà terminée | `Clôture administrative de la partie <id>` |
-| `adminDelete` | `id` | `{}` ; coups et commentaires supprimés, l'appariement de tournoi garde son résultat et perd son lien | `Suppression de la partie <id>` |
-| `purge` | | `{ deleted }` : parties terminées supprimées | `Purge de <n> partie(s) terminée(s)` |
+| `adminDelete` | `id` | `{}` ; coups et commentaires supprimés, l'appariement de tournoi garde son résultat et perd son lien ; la partie ne compte plus dans les statistiques | `Suppression de la partie <id>` |
+| `purge` | | `{ deleted }` : parties terminées supprimées ; les statistiques des joueurs sont conservées | `Purge de <n> partie(s) terminée(s)` |
+
+La purge sert à garder la base petite, pas à annuler des parties : dans la même
+transaction, elle verrouille les parties terminées, confie le résultat de
+chaque partie en ligne à `ResultArchive`, puis les supprime. `adminDelete`
+n'archive rien : supprimer une partie précise la retire aussi des statistiques.
 
 Partie de tournoi : `GameService::createForPairing()` crée une partie en ligne
 déjà en cours, les deux sièges pris ; la pendule ne part qu'au premier coup des

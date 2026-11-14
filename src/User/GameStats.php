@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace LeCercle\User;
 
-/** Victoires, défaites et nulles calculées depuis les parties en ligne terminées. */
+/** Victoires, défaites et nulles des parties en ligne terminées, celles que la purge a supprimées comprises. */
 interface GameStats
 {
     /**

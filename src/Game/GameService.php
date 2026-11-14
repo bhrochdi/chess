@@ -43,6 +43,7 @@ final class GameService
         private readonly RandomSource $random,
         private readonly GameViews $views,
         private readonly GameEndListener $ended,
+        private readonly ResultArchive $archive,
     ) {
         $this->pgn = new PgnWriter();
     }
@@ -191,19 +192,25 @@ final class GameService
         });
     }
 
-    /** Supprime les parties terminées ; renvoie leur nombre. */
+    /**
+     * Supprime les parties terminées ; renvoie leur nombre. Le résultat de chaque partie en ligne est
+     * d'abord archivé : la purge ne change pas les statistiques des joueurs.
+     */
     public function purgeFinished(): int
     {
         $admin = $this->access->admin();
 
         return $this->transactions->run(function () use ($admin): int {
-            $ids = $this->games->finishedIds();
-            foreach ($ids as $id) {
-                $this->games->delete($id);
+            $finished = $this->games->finished();
+            foreach ($finished as $game) {
+                if ($game->mode === GameMode::Online && $game->whiteId !== null && $game->blackId !== null && $game->result !== null) {
+                    $this->archive->keep($game->whiteId, $game->blackId, $game->result);
+                }
+                $this->games->delete($game->id);
             }
-            $this->journal->record($admin->id, 'Purge de ' . \count($ids) . ' partie(s) terminée(s)');
+            $this->journal->record($admin->id, 'Purge de ' . \count($finished) . ' partie(s) terminée(s)');
 
-            return \count($ids);
+            return \count($finished);
         });
     }
 

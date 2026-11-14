@@ -29,8 +29,12 @@ interface GameRepository
     /** Supprime la partie, ses coups et ses commentaires ; un appariement de tournoi perd son lien. */
     public function delete(string $id): void;
 
-    /** @return list<string> */
-    public function finishedIds(): array;
+    /**
+     * Parties terminées, tous modes, par identifiant ; leurs lignes restent verrouillées jusqu'à la fin de la transaction.
+     *
+     * @return list<GameSummary>
+     */
+    public function finished(): array;
 
     /**
      * Toutes les parties, tous modes, les plus récentes d'abord.

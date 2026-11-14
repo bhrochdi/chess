@@ -206,7 +206,8 @@ le même temps de calcul ; après 5 échecs sur un compte ou 20 depuis une adres
 en 15 minutes, la connexion est refusée (429) même avec le bon mot de passe,
 pour arrêter les essais en série ; l'identifiant de session change à la
 connexion. Les statistiques (victoires, défaites, nulles) se calculent à partir
-des parties en ligne terminées : elles ne peuvent pas être falsifiées.
+des parties en ligne terminées : elles ne peuvent pas être falsifiées, et la
+purge des parties terminées les conserve.
 
 **Code :** `src/User/` (`AuthService`, `PresenceService`), `api/auth.php` ;
 `public/js/core/auth.js`, `public/js/core/presence.js`.
@@ -223,8 +224,8 @@ des parties en ligne terminées : elles ne peuvent pas être falsifiées.
 - Parties : voir, clore (décision administrative), supprimer.
 - Salons : créer, renommer, réordonner, archiver, supprimer ; modérer les
   messages d'un salon ou le vider.
-- Maintenance : purger les parties terminées, purger les invités inactifs
-  depuis 30 jours.
+- Maintenance : purger les parties terminées (les statistiques des joueurs
+  sont conservées), purger les invités inactifs depuis 30 jours.
 - Journal : chaque action ci-dessus, avec son auteur et sa date.
 - Premier administrateur : le premier compte inscrit l'est d'office ; « Devenir
   administrateur » ne fonctionne que s'il n'en existe aucun.

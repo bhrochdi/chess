@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace LeCercle\Tests\Unit\Game;
 
+use LeCercle\Chess\Result;
 use LeCercle\Game\GameService;
 use LeCercle\Shared\ConflictException;
 use LeCercle\Shared\ForbiddenException;
@@ -126,6 +127,51 @@ final class GameAdminTest extends TestCase
 
         self::assertSame([$playing], array_column($service->adminList(), 'id'));
         self::assertSame([['actor' => self::ROOT, 'action' => 'Purge de 2 partie(s) terminée(s)']], $this->journal->entries);
+    }
+
+    public function testPurgeArchivesTheResultOfEachOnlineGame(): void
+    {
+        $service = $this->service();
+        $draw = $this->onlineGame($service);
+        $blackWins = $this->onlineGame($service);
+        $this->onlineGame($service);
+        $this->as(self::ROOT);
+        $service->adminClose($draw, null);
+        $service->adminClose($blackWins, '0-1');
+
+        $service->purgeFinished();
+
+        self::assertSame(
+            [[self::ALICE, self::BOB, Result::Draw], [self::ALICE, self::BOB, Result::BlackWins]],
+            $this->archive->kept,
+        );
+    }
+
+    public function testPurgeDoesNotArchiveLocalOrComputerGames(): void
+    {
+        $service = $this->service();
+        $this->as(self::ALICE);
+        $local = $service->create('local', null, null, null)['id'];
+        $computer = $service->create('ai', 'ai-2', null, null)['id'];
+        $this->as(self::ROOT);
+        $service->adminClose($local, '1-0');
+        $service->adminClose($computer, '1-0');
+
+        self::assertSame(2, $service->purgeFinished());
+
+        self::assertSame([], $this->archive->kept);
+    }
+
+    public function testAdminDeleteDoesNotArchiveTheResult(): void
+    {
+        $service = $this->service();
+        $id = $this->onlineGame($service);
+        $this->as(self::ROOT);
+        $service->adminClose($id, '1-0');
+
+        $service->adminDelete($id);
+
+        self::assertSame([], $this->archive->kept);
     }
 
     public function testAdminListShowsLocalAndComputerGamesToo(): void

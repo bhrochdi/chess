@@ -67,12 +67,12 @@ final class InMemoryGameRepository implements GameRepository
         unset($this->snapshots[$id]);
     }
 
-    public function finishedIds(): array
+    public function finished(): array
     {
-        return array_values(array_map(
-            static fn(GameSnapshot $s): string => $s->id,
-            array_filter($this->snapshots, static fn(GameSnapshot $s): bool => $s->status === GameStatus::Finished),
-        ));
+        $finished = array_values(array_filter($this->snapshots, static fn(GameSnapshot $s): bool => $s->status === GameStatus::Finished));
+        usort($finished, static fn(GameSnapshot $a, GameSnapshot $b): int => $a->id <=> $b->id);
+
+        return array_map(fn(GameSnapshot $s): GameSummary => GameSummary::of(Game::restore($s, $this->rules)), $finished);
     }
 
     public function all(int $limit): array

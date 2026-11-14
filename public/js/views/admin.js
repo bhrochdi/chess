@@ -119,7 +119,7 @@ async function adminCloseGame(g) {
 }
 
 async function adminDeleteGame(g) {
-  const ok = await askConfirm('Supprimer la partie ?', 'Ses coups et ses commentaires seront effacés.');
+  const ok = await askConfirm('Supprimer la partie ?', 'Ses coups et ses commentaires seront effacés ; elle ne comptera plus dans les statistiques.');
   if (ok) gameAdmin('adminDelete', { id: g.id });
 }
 
@@ -138,7 +138,7 @@ function renderAdminLog(entries) {
 
 /* -------- Maintenance -------- */
 $('admPurge').addEventListener('click', async () => {
-  const ok = await askConfirm('Purger les parties terminées ?', 'Leurs coups et leurs commentaires seront supprimés.');
+  const ok = await askConfirm('Purger les parties terminées ?', 'Leurs coups et leurs commentaires seront supprimés ; les statistiques des joueurs sont conservées.');
   if (ok) gameAdmin('purge', {});
 });
 

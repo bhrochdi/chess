@@ -21,6 +21,7 @@ use LeCercle\Tests\Support\InMemoryMembers;
 use LeCercle\Tests\Support\MemberFactory;
 use LeCercle\Tests\Support\RecordingAdminJournal;
 use LeCercle\Tests\Support\RecordingGameEndListener;
+use LeCercle\Tests\Support\RecordingResultArchive;
 use LeCercle\Tests\Support\ScriptedComputerPlayers;
 use LeCercle\Tests\Unit\Chess\Ai\FixedRandom;
 
@@ -40,6 +41,7 @@ trait GameServiceFixture
     private ChessRules $rules;
     private InMemoryGameRepository $games;
     private RecordingAdminJournal $journal;
+    private RecordingResultArchive $archive;
 
     private function setUpFixture(): void
     {
@@ -56,6 +58,7 @@ trait GameServiceFixture
         $this->rules = ChessRules::standard();
         $this->games = new InMemoryGameRepository($this->rules);
         $this->journal = new RecordingAdminJournal();
+        $this->archive = new RecordingResultArchive();
     }
 
     private function service(
@@ -79,6 +82,7 @@ trait GameServiceFixture
             $random ?? new FixedRandom(0.0),
             new GameViews($members, $this->rules),
             $listener ?? new RecordingGameEndListener(),
+            $this->archive,
         );
     }
 

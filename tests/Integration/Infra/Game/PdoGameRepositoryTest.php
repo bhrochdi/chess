@@ -449,15 +449,24 @@ final class PdoGameRepositoryTest extends DatabaseTestCase
         return $stmt;
     }
 
-    public function testFinishedIds(): void
+    public function testFinishedListsFinishedGamesOfEveryModeById(): void
     {
         $now = self::t0();
-        $finished = Game::local('g0000000000d2', 'alice', null, $now);
-        $finished->closeByAdmin(Result::Draw, $now);
-        $this->repo->add($finished);
+        $online = $this->onlineGame('g0000000000d9', 'bob', $now);
+        $online->join('alice', $now);
+        $online->closeByAdmin(Result::BlackWins, $now);
+        $this->repo->add($online);
+        $local = Game::local('g0000000000d2', 'alice', null, $now);
+        $local->closeByAdmin(Result::Draw, $now);
+        $this->repo->add($local);
         $this->repo->add(Game::local('g0000000000d3', 'alice', null, $now));
 
-        self::assertSame(['g0000000000d2'], $this->repo->finishedIds());
+        $finished = $this->repo->finished();
+
+        self::assertSame(['g0000000000d2', 'g0000000000d9'], array_map(static fn($s): string => $s->id, $finished));
+        self::assertSame(Result::BlackWins, $finished[1]->result);
+        self::assertSame($online->whiteId(), $finished[1]->whiteId);
+        self::assertSame($online->blackId(), $finished[1]->blackId);
     }
 
     public function testAllIncludesEveryModeNewestFirst(): void
