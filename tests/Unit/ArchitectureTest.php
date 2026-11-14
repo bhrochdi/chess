@@ -17,7 +17,8 @@ final class ArchitectureTest extends TestCase
         $files = [];
         foreach (new \RecursiveIteratorIterator(new \RecursiveDirectoryIterator($root, \FilesystemIterator::SKIP_DOTS)) as $f) {
             if ($f instanceof \SplFileInfo && $f->isFile() && $f->getExtension() === 'php') {
-                $files[] = substr($f->getPathname(), \strlen($root) + 1);
+                // Séparateur « / » partout : sous Windows, getPathname() renvoie des « \ ».
+                $files[] = str_replace('\\', '/', substr($f->getPathname(), \strlen($root) + 1));
             }
         }
         sort($files);
