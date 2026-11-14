@@ -1,161 +1,114 @@
-# Le Cercle — Plateforme d'échecs en ligne
+# Le Cercle — plateforme d'échecs en ligne
 
-## Contexte du projet
-Parti d'un prototype monofichier développé avec Claude.ai, devenu une
-application autonome hébergée sur WampServer : front éclaté en
-`index.html` + `css/` + `js/`, backend PHP/MySQL (`api/`).
+Site d'un club d'échecs : jeu contre l'ordinateur, à deux sur un écran ou en
+ligne, salons et messages privés, tournois, espace d'administration.
+
+## Principe directeur
+
+**Le serveur décide, le navigateur affiche.** Coups légaux, pendule, résultats,
+appariements et droits n'existent qu'en PHP. Le navigateur envoie une intention
+et dessine l'état reçu : ne jamais y remettre une règle métier.
 
 ## Stack
-- Front : HTML/CSS/JS vanilla — aucun framework, aucune dépendance npm côté front
-- Back (cible) : PHP 8.x avec PDO (requêtes préparées obligatoires), MySQL 8.0.27
-- Serveur local : WampServer (Apache), projet servi depuis `c:/wamp64/www/le-cercle/`
-  (adapter le chemin si besoin)
 
-## Architecture actuelle (à lire avant toute modification)
-Depuis `refactor/decoupage`, le front est éclaté (plus de monofichier) :
-`index.html` (markup) + `css/styles.css` + `js/` (voir `README.md`).
-- `js/engine.js` : moteur d'échecs PUR (aucune référence au DOM). Il est
-  réutilisé tel quel — chargé dans `js/ai-worker.js` via `importScripts` pour
-  l'IA — ne jamais y introduire de code DOM. Moteur testé et validé : ne pas
-  le modifier sans tests de non-régression (20 coups en position initiale, mat
-  du berger, roque, prise en passant ; cf. `tests/`).
-- `js/app.js` : l'application — 6 vues (Accueil, Jeu local, Partie en ligne,
-  Salon, Messages, Tournois) + espace Admin, rendu d'échiquier générique
-  `BoardUI`, authentification (serveur en mode PHP via `api/auth.php`, base
-  JSON `db:users` en mode artefact). `js/theme-switcher.js` gère le thème.
-  Scripts classiques chargés dans l'ordre engine.js → app.js (portée globale
-  partagée).
-- **Point d'abstraction clé** : TOUT l'accès au stockage passe par 4 fonctions
-  — `sget`, `sset`, `slist`, `sdel` — et le flag `HAS_STORAGE`. C'est le seul
-  endroit où brancher un backend.
-- Scopes de stockage : `shared=true` (données communes à tous) /
-  `shared=false` (données propres au visiteur → côté PHP : scoper par
-  session).
-- Le « temps réel » est un polling (2 à 8 s selon les vues) : conserver ces
-  cadences, ne pas les agressiver.
+- Front (`public/`) : HTML/CSS/JS sans framework ni dépendance npm, en scripts
+  classiques à portée globale. L'ordre de chargement est fixé par `index.html` :
+  un fichier ne voit que ce que déclarent ceux chargés avant lui.
+- Back : PHP ≥ 8.3, PDO, MySQL 8. Aucune dépendance Composer à l'exécution
+  (PHPUnit, PHPStan et PHP-CS-Fixer en développement seulement).
+- Hébergement : WampServer (hôte virtuel `le-cercle.localhost`, racine
+  `public/`, `api/` servi sous `/api`) ou Docker (`http://localhost:8080/`).
+
+## Architecture (à lire avant toute modification)
+
+Le détail est dans `docs/architecture/` : cas d'utilisation, puis une page par
+module avec ses états, son API, ses tables et ses règles. S'y reporter plutôt
+que de le déduire du code.
+
+```
+public/          racine web : index.html, css/, js/core/ (noyau), js/views/ (une vue par fichier)
+api/             points d'entrée PHP, un fichier par ressource
+src/Chess/       domaine pur : position, coups légaux, SAN, fin de partie, IA
+src/Game/        parties : coups, pendule, ordinateur, nulle, PGN
+src/Chat/        salons, messages privés, commentaires de partie
+src/Tournament/  appariements, classements, cycle de vie
+src/User/        comptes, connexion, invités, présence
+src/Admin/       journal et tableau de bord
+src/Shared/      ports communs : horloge, session, transactions, exceptions, accès
+src/Infra/       implémentations : PDO, HTTP, session PHP, liens entre modules
+sql/migrations/  migrations numérotées, seule source du schéma
+tests/           Unit/, Integration/ (MySQL), http/ (contrôle HTTP), front/
+```
+
+Règles de dépendance, vérifiées par `tests/Unit/ArchitectureTest` :
+
+- `Chess` ne dépend de rien.
+- Un module (`Game`, `Chat`, `Tournament`, `User`, `Admin`) ne référence que
+  `Chess`, `Shared` et lui-même. Il n'appelle jamais PDO, `$_SESSION`, `time()`
+  ni `random_int()` : il passe par un port (`Clock`, `RandomSource`,
+  `*Repository`…).
+- `Infra` implémente les ports. Deux modules qui coopèrent le font par un
+  adaptateur d'`Infra` (`Link/GameTournamentServices`), jamais directement.
+
+Protocole d'API : `POST api/<ressource>.php` avec un corps JSON
+`{ "action": …, … }` ; réponse `{ "ok": true, … }` ou
+`{ "ok": false, "error": … }`. Une action = une méthode de service, appelée par
+un contrôleur de `src/Infra/Http/Api/`. Les erreurs sont des exceptions de
+`Shared` traduites en statut HTTP (422, 403, 404, 409, 429).
+
+Schéma : une modification passe par un nouveau fichier `sql/migrations/NNN-nom.sql`
+(règles d'écriture et plages de numéros en tête de `001-schema-initial.sql`).
+Ne jamais modifier une migration déjà appliquée.
+
+Le « temps réel » est un polling (2,5 s pour une partie, 3 s pour les salons et
+messages, 5 à 8 s ailleurs, 25 s pour la présence) : conserver ces cadences.
 
 ## Conventions
-- Langue : tout en français (commentaires, commits, documentation)
-- Commits : Conventional Commits en français (`feat:`, `fix:`, `refactor:`,
-  `docs:`, `chore:`) — commits atomiques
-- Branches : `feat/...`, `fix/...` — jamais de commit direct sur `main`
-- Sécurité : PDO + requêtes préparées partout ; jamais de credentials en dur
-  dans le code versionné (`api/config.php` ignoré par git +
-  `api/config.example.php` versionné) ; toujours échapper les sorties HTML
-  (la fonction `esc()` existe déjà côté front)
-- Pas de réécriture massive non demandée : modifications ciblées
+
+- Langue : commentaires, commits et documentation en français ; identifiants en
+  anglais.
+- Commits : Conventional Commits (`feat`, `fix`, `docs`, `style`, `refactor`,
+  `perf`, `test`, `build`, `ci`, `chore`, `revert`), en-tête de 100 caractères
+  au plus, commits atomiques. La CI les contrôle avec commitlint.
+- Branches : `feat/...`, `fix/...` — jamais de commit direct sur `main`. Chaque
+  pull request fusionnée publie une version (étiquette `semver:major`,
+  `semver:minor`, `semver:patch` ou `semver:none`).
+- Sécurité : requêtes préparées partout ; aucun identifiant versionné
+  (`api/config.php` et `.env` sont ignorés par git) ; `esc()` sur toute valeur
+  insérée dans la page.
+- Moteur d'échecs (`src/Chess/`) : aucune modification sans tests de
+  non-régression, perft compris.
+- Toute modification de comportement ou d'API met à jour ses tests et la page
+  correspondante de `docs/architecture/`. Une nouvelle action d'API a aussi son
+  contrôle HTTP dans `tests/http/smoke.d/`.
+- Modifications ciblées : pas de réécriture massive non demandée.
 
 ## Règles de travail
-1. Lire entièrement `le-cercle-echecs.html` avant la première modification.
-2. Ne pas casser la compatibilité artefact Claude.ai : si `window.storage`
-   existe, l'utiliser ; sinon basculer sur l'API PHP (fallback).
-3. Après chaque étape : vérifier la syntaxe, tester, puis committer.
-4. Poser des questions avant toute décision structurante non couverte ici.
+
+1. Lire la page de `docs/architecture/` du module concerné avant de le modifier.
+2. Après chaque étape : tester, puis committer.
+3. Poser des questions avant toute décision structurante non couverte ici.
 
 ## Commandes utiles
-- MySQL : `c:/wamp64/bin/mysql/mysql8.0.27/bin/mysql.exe -u root`
-- Base de données : `le_cercle` (à créer si absente, cf. `sql/schema.sql`)
-- URL locale : `http://localhost/le-cercle/`
 
-## Feuille de route
-1. `feat/backend-php` — endpoint `api/storage.php` + fallback front (en cours)
-2. `feat/auth-serveur` — hachage `password_hash()`/`password_verify()` côté
-   serveur, sessions PHP
-3. `feat/oauth-google` — vrai OAuth (Google Identity Services ou Hybridauth)
-4. `feat/admin-salons` — gestion de plusieurs salons thématiques (cf. ci-dessous)
-5. `feat/admin-tournois` — système de tournois administrable (cf. ci-dessous)
-6. `refactor/decoupage` — éclater le monofichier (css/, js/, moteur séparé)
+Sous WampServer, depuis la racine du dépôt (PHP 8.3 et Composer dans le PATH) :
 
----
+```
+composer test                 # tests unitaires PHPUnit
+composer test:slow            # IA niveau maître
+vendor/bin/phpstan analyse --memory-limit=1G
+node tests/front/unit/run.mjs # calculs du front
+php bin/migrate.php           # applique les migrations
+```
 
-## Espace administrateur — extensions à développer
+- Les tests d'intégration (`composer test:integration`) vident leurs tables :
+  ils visent la base `le_cercle_test` et lisent `DB_HOST`, `DB_PORT`, `DB_USER`
+  et `DB_PASS` dans l'environnement. Sans ces variables, les lancer par Docker.
+- Le contrôle de style (`composer lint`) se juge dans Docker ou en CI : sur un
+  clone Windows aux fins de ligne CRLF, PHP-CS-Fixer signale tous les fichiers.
+- Les commandes Docker et la CI sont décrites dans `README.md`.
 
-> Rappel : l'espace admin de base existe déjà (tableau de bord, gestion des
-> utilisateurs avec suspension/rôles/suppression, modération du salon unique,
-> journal d'administration, maintenance/sauvegarde JSON). Les deux modules
-> ci-dessous sont des AJOUTS. Réutiliser l'onglet « ⚙ Admin » existant en y
-> ajoutant des sous-sections, et réutiliser les briques en place :
-> `isAdmin()`, `adminLog()`, `askConfirm()`, `sget/sset/slist/sdel`,
-> les styles `.admin-table`, `.stat-card`, `.dangerzone`.
+## Reste à faire
 
-### Module A — Gestion des salons (`feat/admin-salons`)
-Objectif : passer du salon unique (`chat:global`) à plusieurs salons
-thématiques administrables (ex. « Général », « Débutants », « Analyses »,
-« Tournois »).
-
-Modèle de données (stockage partagé) :
-- `db:rooms` : tableau de salons
-  `{ id, nom, description, ordre, archive: bool, creePar, creeLe }`
-- `chat:room:<id>` : tableau de messages du salon (même format que l'actuel
-  `chat:global` — prévoir une migration de `chat:global` vers
-  `chat:room:general`).
-
-Côté admin (sous-section « Salons ») :
-- Créer un salon (nom + description), renommer, réordonner, archiver/désarchiver,
-  supprimer (avec `askConfirm` + purge de `chat:room:<id>`).
-- Modération par salon (réutiliser le rendu existant, paramétré par salon).
-- Tracer chaque action via `adminLog()`.
-
-Côté utilisateur (vue Salon) :
-- Sélecteur de salon (liste déroulante ou onglets) ; n'afficher que les salons
-  non archivés. Le polling et les badges de nouveaux messages doivent suivre le
-  salon actif.
-
-Garde-fous : interdire la suppression du salon « Général » par défaut ;
-nom de salon unique ; échapper toutes les sorties (`esc`).
-
-### Module B — Système de tournois (`feat/admin-tournois`)
-Objectif : permettre à un admin de créer et piloter des tournois, et aux
-joueurs de s'y inscrire et d'y jouer via le moteur de parties en ligne existant.
-
-Modèle de données (stockage partagé) :
-- `db:tournaments` : index léger
-  `{ id, nom, format, cadence, statut, nbInscrits, debutLe }`
-- `tournament:<id>` : détail complet
-  `{ id, nom, description, format: 'round-robin'|'elimination'|'suisse',
-     cadence (réutiliser le format tc {base,inc}|null), statut:
-     'inscriptions'|'en-cours'|'termine', participants: [pseudo...],
-     rondes: [ { numero, matchs: [ { blanc, noir, gameId|null,
-     resultat: '1-0'|'0-1'|'1/2-1/2'|null } ] } ],
-     classement: [ { pseudo, points, joues } ], creePar, creeLe }`
-
-Logique de tournoi (commencer SIMPLE) :
-- Étape 1 — round-robin (toutes rondes) uniquement : génération de l'appariement
-  (algorithme du cercle/berger), au moins un test unitaire sur la génération.
-- Étape 2 — barème : victoire 1, nulle 0,5, défaite 0 ; classement trié
-  points puis départage simple (ex. nombre de victoires).
-- Étape 3 — élimination directe et système suisse dans un second temps.
-
-Intégration avec l'existant (réutiliser, ne pas réécrire) :
-- Un match crée une partie via le mécanisme `game:<id>` déjà en place, avec un
-  lien retour `tournamentId`/`rondeId` pour reporter automatiquement le résultat
-  dans le tournoi à la fin de la partie (brancher sur la finalisation existante
-  qui écrit `R.result`).
-- Les pendules, l'abandon, la nulle, le PGN fonctionnent déjà : ne rien
-  dupliquer.
-
-Côté admin (sous-section « Tournois ») :
-- Créer un tournoi (nom, description, format, cadence), ouvrir/fermer les
-  inscriptions, lancer (génère la 1re ronde), saisir/corriger un résultat,
-  passer à la ronde suivante, clore. Tracer via `adminLog()`.
-
-Côté utilisateur :
-- Liste des tournois (par statut), inscription/désinscription tant que les
-  inscriptions sont ouvertes, affichage de l'arbre/grille et du classement,
-  accès direct à sa partie de la ronde en cours.
-
-Garde-fous : pas de modification du statut incohérente (ex. lancer sans 2
-inscrits) ; un seul tournoi `en-cours` à la fois côté UI au début (simplifie) ;
-réutiliser `BoardUI` et la synchro de partie sans les altérer.
-
-### Contraintes communes aux deux modules
-- Conserver l'abstraction de stockage : aucun accès direct à `window.storage`
-  hors de `sget/sset/slist/sdel` (compatibilité artefact + futur backend PHP).
-- Ne pas modifier le moteur d'échecs (`#engineCode`).
-- Conserver les cadences de polling existantes.
-- Commits atomiques en Conventional Commits français, une fonctionnalité par
-  branche.
-- Prévoir la version PHP/MySQL : ces nouvelles clés (`db:rooms`,
-  `chat:room:*`, `db:tournaments`, `tournament:*`) devront mapper sur le même
-  `kv_store` que le reste — donc rien de spécial à prévoir si l'abstraction est
-  respectée.
+- Connexion par un fournisseur externe (Google) : l'énumération
+  `User\Provider` prévoit la valeur, aucun parcours OAuth n'existe encore.
