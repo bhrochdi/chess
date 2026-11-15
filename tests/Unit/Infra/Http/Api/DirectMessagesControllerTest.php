@@ -129,4 +129,22 @@ final class DirectMessagesControllerTest extends TestCase
 
         return [$response->status, json_decode($response->json, true, 512, JSON_THROW_ON_ERROR)];
     }
+
+    public function testConversationWithTheKnownLastIdAnswersUnchanged(): void
+    {
+        self::assertSame(
+            '{"ok":true,"unchanged":true}',
+            $this->raw('{"action":"conversation","peerId":"' . self::BOB . '","known":0}', self::ALICE),
+        );
+
+        [, $sent] = $this->call('{"action":"send","peerId":"' . self::BOB . '","text":"Salut"}', self::ALICE);
+        $id = $sent['message']['id'];
+
+        [, $body] = $this->call('{"action":"conversation","peerId":"' . self::BOB . '","known":0}', self::ALICE);
+        self::assertSame(['Salut'], array_column($body['messages'], 'text'));
+        self::assertSame(
+            '{"ok":true,"unchanged":true}',
+            $this->raw('{"action":"conversation","peerId":"' . self::BOB . '","known":' . $id . '}', self::ALICE),
+        );
+    }
 }

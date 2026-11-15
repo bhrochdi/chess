@@ -79,4 +79,20 @@ final class PdoRoomMessageRepositoryTest extends DatabaseTestCase
         self::assertSame([], $repo->latest('ra', 10));
         self::assertSame(['b1'], self::texts($repo->latest('rb', 10)), 'clear ne touche pas un autre salon');
     }
+
+    public function testLastIdIsTheNewestOfTheRoomOrZero(): void
+    {
+        $repo = $this->repo();
+        self::assertSame(0, $repo->lastId('ra'));
+
+        $first = $repo->add('ra', 'u1', 'un', $this->at());
+        $other = $repo->add('rb', 'u1', 'ailleurs', $this->at());
+        $last = $repo->add('ra', 'u1', 'deux', $this->at());
+
+        self::assertSame([$last->id, $other->id], [$repo->lastId('ra'), $repo->lastId('rb')]);
+        $repo->delete('ra', $last->id);
+        self::assertSame($first->id, $repo->lastId('ra'));
+        $repo->clear('ra');
+        self::assertSame(0, $repo->lastId('ra'));
+    }
 }

@@ -8,6 +8,11 @@ game_id=$(grep -o '"id":"g[0-9a-f]\{12\}"' <<<"$body" | head -n1 | cut -d'"' -f4
 expect_api 200 /api/games.php "{\"action\":\"move\",\"id\":\"$game_id\",\"uci\":\"e2e4\",\"ply\":0}" '"moves":["e4","'
 expect_api 422 /api/games.php "{\"action\":\"move\",\"id\":\"$game_id\",\"uci\":\"e2e5\",\"ply\":2}" 'Coup illégal.'
 expect_api 200 /api/games.php "{\"action\":\"pgn\",\"id\":\"$game_id\"}" '"filename":"le-cercle-'
+# Relecture : la version affichée répond « unchanged », une version périmée renvoie la partie.
+expect_api 200 /api/games.php "{\"action\":\"get\",\"id\":\"$game_id\"}" '"version":"'
+game_version=$(grep -o '"version":"[^"]*"' <<<"$body" | head -n1 | cut -d'"' -f4)
+expect_api 200 /api/games.php "{\"action\":\"get\",\"id\":\"$game_id\",\"known\":\"$game_version\"}" '{"ok":true,"unchanged":true}'
+expect_api 200 /api/games.php "{\"action\":\"get\",\"id\":\"$game_id\",\"known\":\"perimee\"}" '"moves":["e4","'
 expect_api 404 /api/games.php '{"action":"get","id":"g000000000000"}' 'Partie introuvable.'
 # Débit des défis : 5 par compte en 10 minutes, le suivant est refusé.
 new_session

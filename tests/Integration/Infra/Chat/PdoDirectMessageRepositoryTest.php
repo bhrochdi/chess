@@ -155,4 +155,18 @@ final class PdoDirectMessageRepositoryTest extends DatabaseTestCase
         self::assertSame(0, $repo->unreadTotal('alice'));
         self::assertSame(['bob' => 0], self::unread($repo->threads('alice', 12)));
     }
+
+    public function testLastIdIsTheNewestBetweenTheTwoUsersOrZero(): void
+    {
+        $repo = new PdoDirectMessageRepository(self::pdo());
+        $at = new \DateTimeImmutable('2026-11-12 10:00:00.456', new \DateTimeZone('UTC'));
+        self::assertSame(0, $repo->lastId('alice', 'bob'));
+
+        $repo->add('alice', 'bob', 'un', $at);
+        $last = $repo->add('bob', 'alice', 'deux', $at);
+        $repo->add('carol', 'alice', 'ailleurs', $at);
+
+        self::assertSame([$last->id, $last->id], [$repo->lastId('alice', 'bob'), $repo->lastId('bob', 'alice')]);
+        self::assertSame(0, $repo->lastId('bob', 'carol'));
+    }
 }

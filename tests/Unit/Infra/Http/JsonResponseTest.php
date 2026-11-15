@@ -41,4 +41,11 @@ final class JsonResponseTest extends TestCase
         $this->expectException(JsonException::class);
         JsonResponse::ok(['x' => "\xff"]);
     }
+
+    public function testUnchanged(): void
+    {
+        $response = JsonResponse::unchanged();
+
+        self::assertSame([200, '{"ok":true,"unchanged":true}'], [$response->status, $response->json]);
+    }
 }

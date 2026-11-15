@@ -12,6 +12,7 @@ use LeCercle\Game\FinishReason;
 use LeCercle\Game\Game;
 use LeCercle\Game\GameClock;
 use LeCercle\Game\GameMode;
+use LeCercle\Game\GamePulse;
 use LeCercle\Game\GameRepository;
 use LeCercle\Game\GameSnapshot;
 use LeCercle\Game\GameStatus;
@@ -71,6 +72,29 @@ final class PdoGameRepository implements GameRepository
     public function getForUpdate(string $id): Game
     {
         return $this->load($id, ' FOR UPDATE');
+    }
+
+    public function pulse(string $id): GamePulse
+    {
+        $stmt = $this->pdo->prepare(
+            'SELECT mode, owner_id, status, tc_base, tc_inc, white_ms, black_ms, clock_running, clock_since, draw_offer, updated_at,'
+            . ' (SELECT COUNT(*) FROM game_moves WHERE game_id = games.id) AS ply_count FROM games WHERE id = ?',
+        );
+        $stmt->execute([$id]);
+        $row = $stmt->fetch(\PDO::FETCH_ASSOC);
+        if ($row === false) {
+            throw new NotFoundException('Partie introuvable.');
+        }
+
+        return new GamePulse(
+            GameMode::from((string) $row['mode']),
+            (string) $row['owner_id'],
+            GameStatus::from((string) $row['status']),
+            (int) $row['ply_count'],
+            $row['draw_offer'] === null ? null : Color::from((string) $row['draw_offer']),
+            $this->clockOf($row),
+            SqlTime::parse((string) $row['updated_at']),
+        );
     }
 
     public function save(Game $game): void
@@ -189,16 +213,7 @@ final class PdoGameRepository implements GameRepository
     private function snapshotOf(array $row, array $moves): GameSnapshot
     {
         $timeControl = $this->timeControlOf($row);
-        $clock = null;
-        if ($row['white_ms'] !== null && $row['black_ms'] !== null) {
-            $clock = new GameClock(
-                (int) $row['white_ms'],
-                (int) $row['black_ms'],
-                ($timeControl->incrementSeconds ?? 0) * 1000,
-                $row['clock_running'] === null ? null : Color::from((string) $row['clock_running']),
-                $row['clock_since'] === null ? null : SqlTime::parse((string) $row['clock_since']),
-            );
-        }
+        $clock = $this->clockOf($row);
 
         return new GameSnapshot(
             (string) $row['id'],
@@ -216,6 +231,22 @@ final class PdoGameRepository implements GameRepository
             $row['reason'] === null ? null : FinishReason::from((string) $row['reason']),
             SqlTime::parse((string) $row['created_at']),
             SqlTime::parse((string) $row['updated_at']),
+        );
+    }
+
+    /** @param array<string, mixed> $row */
+    private function clockOf(array $row): ?GameClock
+    {
+        if ($row['white_ms'] === null || $row['black_ms'] === null) {
+            return null;
+        }
+
+        return new GameClock(
+            (int) $row['white_ms'],
+            (int) $row['black_ms'],
+            ($this->timeControlOf($row)->incrementSeconds ?? 0) * 1000,
+            $row['clock_running'] === null ? null : Color::from((string) $row['clock_running']),
+            $row['clock_since'] === null ? null : SqlTime::parse((string) $row['clock_since']),
         );
     }
 

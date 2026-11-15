@@ -24,6 +24,13 @@ interface GameRepository
      */
     public function getForUpdate(string $id): Game;
 
+    /**
+     * État léger de la partie, lu sans ses coups ni verrou.
+     *
+     * @throws NotFoundException « Partie introuvable. »
+     */
+    public function pulse(string $id): GamePulse;
+
     public function save(Game $game): void;
 
     /** Supprime la partie, ses coups et ses commentaires ; un appariement de tournoi perd son lien. */

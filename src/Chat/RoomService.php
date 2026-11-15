@@ -52,6 +52,28 @@ final class RoomService
     /** @return list<array<string, mixed>> */
     public function messages(string $roomId): array
     {
+        return $this->views->list($this->messages->latest($this->readableRoom($roomId)->id, self::MESSAGES_LIMIT));
+    }
+
+    /**
+     * Relecture périodique : $known est l'identifiant du dernier message que le navigateur affiche
+     * (0 pour un salon vide). Répond null si c'est toujours le dernier ; les messages ne sont alors pas lus.
+     *
+     * @return list<array<string, mixed>>|null
+     */
+    public function messagesIfNew(string $roomId, int $known): ?array
+    {
+        $room = $this->readableRoom($roomId);
+        if ($this->messages->lastId($room->id) === $known) {
+            return null;
+        }
+
+        return $this->views->list($this->messages->latest($room->id, self::MESSAGES_LIMIT));
+    }
+
+    /** Un salon archivé n'est lisible que par un administrateur. */
+    private function readableRoom(string $roomId): Room
+    {
         $room = $this->room($roomId);
         if ($room->archived) {
             $viewer = $this->access->viewer();
@@ -60,7 +82,7 @@ final class RoomService
             }
         }
 
-        return $this->views->list($this->messages->latest($room->id, self::MESSAGES_LIMIT));
+        return $room;
     }
 
     /** @return array<string, mixed> */

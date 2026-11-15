@@ -217,4 +217,39 @@ final class RoomServiceTest extends TestCase
         }
         self::fail('Une exception était attendue.');
     }
+
+    public function testMessagesIfNewOfAnEmptyRoomKnownAsEmptyAnswersNull(): void
+    {
+        self::assertNull($this->service->messagesIfNew('general', 0));
+    }
+
+    public function testMessagesIfNewAnswersNullWhileTheLastMessageIsKnown(): void
+    {
+        $first = $this->messages->add('general', self::ALICE, 'un', $this->t0);
+
+        self::assertSame(['un'], array_column($this->service->messagesIfNew('general', 0) ?? [], 'text'));
+        $this->members->findManyCalls = 0;
+        self::assertNull($this->service->messagesIfNew('general', $first->id));
+        self::assertSame(0, $this->members->findManyCalls);
+    }
+
+    public function testMessagesIfNewSeesADeletedLastMessageAndAClearedRoom(): void
+    {
+        $first = $this->messages->add('general', self::ALICE, 'un', $this->t0);
+        $second = $this->messages->add('general', self::ALICE, 'deux', $this->t0);
+
+        $this->messages->delete('general', $second->id);
+        self::assertSame(['un'], array_column($this->service->messagesIfNew('general', $second->id) ?? [], 'text'));
+
+        $this->messages->clear('general');
+        self::assertSame([], $this->service->messagesIfNew('general', $first->id));
+    }
+
+    public function testMessagesIfNewOfAnArchivedRoomIsAdminOnly(): void
+    {
+        $this->expectNotFound(fn() => $this->service->messagesIfNew(self::ARCHIVES, 0));
+
+        $this->session->logIn(self::ROOT);
+        self::assertNull($this->service->messagesIfNew(self::ARCHIVES, 0));
+    }
 }

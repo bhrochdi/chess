@@ -7,6 +7,7 @@ namespace LeCercle\Tests\Unit\Support;
 use LeCercle\Chess\Color;
 use LeCercle\Game\ChessRules;
 use LeCercle\Game\Game;
+use LeCercle\Game\GamePulse;
 use LeCercle\Game\GameStatus;
 use LeCercle\Shared\NotFoundException;
 use LeCercle\Tests\Support\InMemoryGameRepository;
@@ -161,5 +162,26 @@ final class InMemoryGameRepositoryTest extends TestCase
         self::assertSame(GameStatus::Finished, $finished->status());
         self::assertSame([$asBlack->id(), $local->id()], array_map(static fn($s): string => $s->id, $summaries));
         self::assertCount(1, $this->games->unfinishedOf(self::ALICE, 1));
+    }
+
+    public function testPulseIsTheLightStateAndCountsApartFromFullReads(): void
+    {
+        $this->online(0);
+        $game = $this->games->getForUpdate('g000000000001');
+        $this->games->fullReads = 0;
+
+        $pulse = $this->games->pulse('g000000000001');
+
+        self::assertSame(GamePulse::of($game)->version(), $pulse->version());
+        self::assertSame([0, 1], [$this->games->fullReads, $this->games->pulseReads]);
+        $this->games->get('g000000000001');
+        self::assertSame([1, 1], [$this->games->fullReads, $this->games->pulseReads]);
+    }
+
+    public function testPulseOfAnUnknownGameIsNotFound(): void
+    {
+        $this->expectException(NotFoundException::class);
+        $this->expectExceptionMessage('Partie introuvable.');
+        $this->games->pulse('g999999999999');
     }
 }

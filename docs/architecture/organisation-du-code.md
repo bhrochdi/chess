@@ -119,6 +119,12 @@ des valeurs du serveur ; à zéro, le navigateur relit la partie et le serveur
 constate la chute du drapeau. Une réponse en retard ne fait jamais reculer
 l'échiquier (`newer()`).
 
+Les relectures les plus fréquentes (partie en ligne, commentaires, salon,
+conversation ouverte) envoient ce que le navigateur affiche déjà (`known`) ;
+tant que rien n'a changé, le serveur répond `unchanged` sans relire les
+données ([contrats communs](infrastructure.md#contrats-communs-des-api)). Les
+cadences ne changent pas : c'est le coût de chaque relecture qui baisse.
+
 Les seules fonctions de calcul du navigateur (`fen.js`, `game-state.js`) sont
 testées par `node tests/front/unit/run.mjs`.
 

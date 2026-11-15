@@ -48,7 +48,7 @@ exige un compte non suspendu pour toutes ses actions.
 |--------|------------|-------|---------|
 | `list` | | tous | `{ rooms }` : salons non archivés |
 | `listAll` | | admin | `{ rooms }` : tous les salons |
-| `messages` | `roomId` | tous ; un salon archivé n'est lisible que par un administrateur (sinon 404) | `{ messages }` : les 80 derniers |
+| `messages` | `roomId`, `known?` | tous ; un salon archivé n'est lisible que par un administrateur (sinon 404) | `{ messages }` : les 80 derniers ; `{ unchanged: true }` si `known` est le dernier message |
 | `send` | `roomId`, `text` | joueur ; 409 si le salon est archivé ; 429 au-delà du débit d'envoi | `{ message }` |
 | `create` | `name`, `description?` | admin | `{ room }` ; 409 si le nom est pris |
 | `rename` | `roomId`, `name` | admin | `{ room }` ; 409 si le nom est pris |
@@ -68,7 +68,7 @@ createdAt }`, avec `createdBy` à `null` pour « Général ». Un message est
 |--------|------------|---------|
 | `open` | `pseudo` | `{ peer }` : le joueur à qui écrire ; 404 s'il n'existe pas |
 | `threads` | | `{ threads, unreadTotal }` : les 12 conversations les plus récentes |
-| `conversation` | `peerId` | `{ messages }` : les 100 derniers ; marque la conversation comme lue |
+| `conversation` | `peerId`, `known?` | `{ messages }` : les 100 derniers ; marque la conversation comme lue ; `{ unchanged: true }` si `known` est le dernier message |
 | `send` | `peerId`, `text` | `{ message }` |
 
 Une conversation est `{ peer, last: { text, createdAt, fromMe }, unread }`.
@@ -80,13 +80,20 @@ supprimé reste listé comme « (compte supprimé) » mais sa conversation répo
 
 | Action | Paramètres | Accès | Réponse |
 |--------|------------|-------|---------|
-| `list` | `gameId` | tous | `{ comments }` : les 80 derniers |
+| `list` | `gameId`, `known?` | tous | `{ comments }` : les 80 derniers ; `{ unchanged: true }` si `known` est le dernier commentaire |
 | `send` | `gameId`, `text` | joueur | `{ comment }` |
 
 Seules les parties en ligne existantes acceptent des commentaires ; toute autre partie, ou un identifiant inconnu, répond 404 « Partie introuvable. ».
 
 ## Règles
 
+- Relecture périodique : `messages`, `conversation` et `list` acceptent
+  `known`, l'identifiant du dernier message que le navigateur affiche (0 pour
+  un fil vide). Si c'est toujours le dernier, la réponse est `unchanged` : le
+  serveur n'a lu que cet identifiant (`lastId()` des dépôts), ni les messages
+  ni leurs auteurs. Un dernier message supprimé ou un salon vidé changent le
+  dernier identifiant, donc la réponse redevient entière ; la suppression d'un
+  message plus ancien n'apparaît qu'au message suivant, comme avant.
 - Débit d'envoi : un compte envoie au plus 8 messages en 20 secondes, tous
   canaux confondus (salons, messages privés, commentaires de partie). Le
   suivant répond 429 « Tu envoies des messages trop vite. Patiente quelques

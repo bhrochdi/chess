@@ -31,6 +31,22 @@ final class GameCommentService
         return $this->views->list($this->comments->latest($gameId, self::LIMIT));
     }
 
+    /**
+     * Relecture périodique : $known est l'identifiant du dernier commentaire que le navigateur affiche
+     * (0 s'il n'y en a aucun). Répond null si c'est toujours le dernier.
+     *
+     * @return list<array<string, mixed>>|null
+     */
+    public function listIfNew(string $gameId, int $known): ?array
+    {
+        $this->assertGameId($gameId);
+        if ($this->comments->lastId($gameId) === $known) {
+            return null;
+        }
+
+        return $this->views->list($this->comments->latest($gameId, self::LIMIT));
+    }
+
     /** @return array<string, mixed> */
     public function send(string $gameId, string $text): array
     {

@@ -21,6 +21,12 @@ final readonly class JsonResponse
         return new self(200, json_encode(['ok' => true] + $data, self::FLAGS));
     }
 
+    /** Réponse à une relecture périodique dont le navigateur affiche déjà l'état : {"ok": true, "unchanged": true}. */
+    public static function unchanged(): self
+    {
+        return self::ok(['unchanged' => true]);
+    }
+
     public static function error(int $status, string $message): self
     {
         return new self(

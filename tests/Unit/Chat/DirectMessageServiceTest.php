@@ -198,4 +198,40 @@ final class DirectMessageServiceTest extends TestCase
             self::assertSame($message, $e->getMessage());
         }
     }
+
+    public function testConversationIfNewAnswersNullWhileTheLastMessageIsKnown(): void
+    {
+        $this->session->logIn(self::ALICE);
+        self::assertNull($this->service->conversationIfNew(self::BOB, 0));
+        $id = $this->service->send(self::BOB, 'Salut')['id'];
+        self::assertIsInt($id);
+
+        self::assertNull($this->service->conversationIfNew(self::BOB, $id));
+        self::assertSame(['Salut'], array_column($this->service->conversationIfNew(self::BOB, 0) ?? [], 'text'));
+    }
+
+    public function testConversationIfNewMarksNewMessagesAsRead(): void
+    {
+        $this->session->logIn(self::ALICE);
+        $id = $this->service->send(self::BOB, 'Salut')['id'];
+        self::assertIsInt($id);
+        $this->session->logIn(self::BOB);
+        self::assertSame(1, $this->service->threads()['unreadTotal']);
+
+        self::assertSame(['Salut'], array_column($this->service->conversationIfNew(self::ALICE, 0) ?? [], 'text'));
+
+        self::assertSame(0, $this->service->threads()['unreadTotal']);
+        self::assertNull($this->service->conversationIfNew(self::ALICE, $id));
+    }
+
+    public function testConversationIfNewWithOneselfIsRefused(): void
+    {
+        $this->session->logIn(self::ALICE);
+
+        $this->expectFailure(
+            ValidationException::class,
+            'Tu ne peux pas t’écrire à toi-même.',
+            fn() => $this->service->conversationIfNew(self::ALICE, 0),
+        );
+    }
 }

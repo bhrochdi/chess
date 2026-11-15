@@ -35,4 +35,19 @@ final class InMemoryRoomMessageRepositoryTest extends TestCase
         $repo->clear('general');
         self::assertSame([], $repo->latest('general', 10));
     }
+
+    public function testLastIdIsTheNewestOfTheRoomOrZero(): void
+    {
+        $repo = new InMemoryRoomMessageRepository();
+        $at = new \DateTimeImmutable('2026-11-12 10:00:00');
+        self::assertSame(0, $repo->lastId('ra'));
+
+        $first = $repo->add('ra', 'u1', 'un', $at);
+        $other = $repo->add('rb', 'u1', 'ailleurs', $at);
+        $last = $repo->add('ra', 'u1', 'deux', $at);
+
+        self::assertSame([$last->id, $other->id], [$repo->lastId('ra'), $repo->lastId('rb')]);
+        $repo->delete('ra', $last->id);
+        self::assertSame($first->id, $repo->lastId('ra'));
+    }
 }

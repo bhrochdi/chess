@@ -24,7 +24,12 @@ final class GamesController
                 $r->optionalString('color'),
             )),
             'join' => fn(JsonRequest $r): JsonResponse => $this->game($this->games->join($r->string('id'))),
-            'get' => fn(JsonRequest $r): JsonResponse => $this->game($this->games->get($r->string('id'))),
+            'get' => function (JsonRequest $r): JsonResponse {
+                $known = $r->optionalString('known');
+                $view = $known === null ? $this->games->get($r->string('id')) : $this->games->getIfChanged($r->string('id'), $known);
+
+                return $view === null ? JsonResponse::unchanged() : $this->game($view);
+            },
             'move' => fn(JsonRequest $r): JsonResponse => $this->game(
                 $this->games->move($r->string('id'), $r->string('uci'), $r->int('ply')),
             ),

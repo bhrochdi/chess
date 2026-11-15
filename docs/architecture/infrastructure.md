@@ -148,6 +148,13 @@ Toutes les ressources suivent les mêmes règles.
 9. Les listes que le front interroge toutes les 2,5 à 8 s coûtent un nombre borné
    de requêtes, jamais une par ligne ; les personnes se résolvent avec un seul
    appel à `Members::findMany()`.
+10. Relecture périodique : les lectures les plus fréquentes (une partie, ses
+    commentaires, les messages d'un salon, une conversation privée) acceptent
+    un paramètre facultatif `known`, ce que le navigateur affiche déjà. Si
+    rien n'a changé, la réponse est `{"ok": true, "unchanged": true}`
+    (`JsonResponse::unchanged()`) et le serveur n'a lu qu'une valeur légère.
+    Sans `known`, la réponse est entière, comme avant. Les contrôles d'accès
+    sont les mêmes dans les deux cas.
 
 PHPStan analyse tout `api/` et PHP-CS-Fixer tous les `api/*.php`, sauf
 `config*.php` : un nouveau point d'entrée est contrôlé sans configuration. De même, chaque fichier

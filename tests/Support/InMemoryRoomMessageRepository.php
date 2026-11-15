@@ -29,6 +29,13 @@ final class InMemoryRoomMessageRepository implements RoomMessageRepository
         return $limit <= 0 ? [] : \array_slice($all, -$limit);
     }
 
+    public function lastId(string $roomId): int
+    {
+        $ids = array_keys($this->byRoom[$roomId] ?? []);
+
+        return $ids === [] ? 0 : max($ids);
+    }
+
     public function find(string $roomId, int $id): ?ChatMessage
     {
         return $this->byRoom[$roomId][$id] ?? null;

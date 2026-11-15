@@ -235,4 +235,24 @@ final class RoomsControllerTest extends TestCase
         return (new HttpKernel(new ExceptionMapper(fn() => null)))
             ->handle('POST', $json, fn() => (new RoomsController($service))->routes());
     }
+
+    public function testMessagesWithTheKnownLastIdAnswersUnchanged(): void
+    {
+        self::assertSame('{"ok":true,"unchanged":true}', $this->raw('{"action":"messages","roomId":"general","known":0}'));
+
+        [, $sent] = $this->call('{"action":"send","roomId":"general","text":"Bonjour"}', self::ALICE);
+        $id = $sent['message']['id'];
+
+        [, $body] = $this->call('{"action":"messages","roomId":"general","known":0}');
+        self::assertSame(['Bonjour'], array_column($body['messages'], 'text'));
+        self::assertSame('{"ok":true,"unchanged":true}', $this->raw('{"action":"messages","roomId":"general","known":' . $id . '}'));
+    }
+
+    public function testMessagesKnownMustBeAnInteger(): void
+    {
+        [$status, $body] = $this->call('{"action":"messages","roomId":"general","known":"12"}');
+
+        self::assertSame(422, $status);
+        self::assertSame('Paramètre « known » manquant ou invalide.', $body['error']);
+    }
 }

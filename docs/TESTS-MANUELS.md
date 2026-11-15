@@ -114,6 +114,14 @@ tel quel. Aucune réponse 500.
 9. Après quelques parties terminées, ouvrir **Mon profil**.
    - Attendu : victoires, défaites et nulles comptent les parties en ligne
      terminées seulement (pas les parties locales ni contre l'ordinateur).
+10. Pendant une partie en ligne, ouvrir l'onglet **Réseau** des outils du
+    navigateur et attendre sans jouer.
+    - Attendu : les relectures de `games.php` et `game-comments.php` répondent
+      `{"ok":true,"unchanged":true}` ; dès qu'un coup est joué ou un
+      commentaire envoyé, la réponse suivante est entière et l'affichage suit.
+11. Se connecter ou se déconnecter en regardant une partie.
+    - Attendu : le « mode spectateur » ou la couleur jouée se met à jour à la
+      relecture suivante, sans attendre un coup.
 
 ## 4. Salons
 

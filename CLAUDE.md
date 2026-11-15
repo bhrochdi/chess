@@ -62,6 +62,9 @@ Ne jamais modifier une migration déjà appliquée.
 
 Le « temps réel » est un polling (2,5 s pour une partie, 3 s pour les salons et
 messages, 5 à 8 s ailleurs, 25 s pour la présence) : conserver ces cadences.
+Les relectures fréquentes envoient `known` (ce que la page affiche déjà) et
+reçoivent `{ "unchanged": true }` si rien n'a bougé : garder ce chemin léger,
+sans chargement de partie ni de messages.
 
 ## Conventions
 

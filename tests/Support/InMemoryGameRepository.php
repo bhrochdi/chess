@@ -7,6 +7,7 @@ namespace LeCercle\Tests\Support;
 use LeCercle\Game\ChessRules;
 use LeCercle\Game\Game;
 use LeCercle\Game\GameMode;
+use LeCercle\Game\GamePulse;
 use LeCercle\Game\GameRepository;
 use LeCercle\Game\GameSnapshot;
 use LeCercle\Game\GameStatus;
@@ -18,6 +19,11 @@ final class InMemoryGameRepository implements GameRepository
 {
     /** @var list<string> identifiants passés à getForUpdate(), dans l'ordre */
     public array $lockedIds = [];
+
+    /** Lectures entières (get, getForUpdate) et lectures légères (pulse) : la garde du polling les compte. */
+    public int $fullReads = 0;
+
+    public int $pulseReads = 0;
 
     /** @var array<string, GameSnapshot> */
     private array $snapshots = [];
@@ -41,17 +47,32 @@ final class InMemoryGameRepository implements GameRepository
 
     public function get(string $id): Game
     {
+        ++$this->fullReads;
+
+        return $this->restore($id);
+    }
+
+    public function getForUpdate(string $id): Game
+    {
+        ++$this->fullReads;
+        $game = $this->restore($id);
+        $this->lockedIds[] = $id;
+
+        return $game;
+    }
+
+    private function restore(string $id): Game
+    {
         $snapshot = $this->snapshots[$id] ?? throw new NotFoundException('Partie introuvable.');
 
         return Game::restore($snapshot, $this->rules);
     }
 
-    public function getForUpdate(string $id): Game
+    public function pulse(string $id): GamePulse
     {
-        $game = $this->get($id);
-        $this->lockedIds[] = $id;
+        ++$this->pulseReads;
 
-        return $game;
+        return GamePulse::of($this->restore($id));
     }
 
     public function save(Game $game): void
