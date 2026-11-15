@@ -48,6 +48,7 @@ final class GameTournamentServices implements GameEndListener, PairingGames
                 new GameViews($this->infra->members(), $rules),
                 $this,
                 new PdoResultArchive($this->infra->pdo()),
+                $this->infra->throttle(),
             );
         }
 

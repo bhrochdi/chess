@@ -18,6 +18,7 @@ use LeCercle\Tests\Support\FixedClock;
 use LeCercle\Tests\Support\ImmediateTransactionRunner;
 use LeCercle\Tests\Support\InMemoryGameRepository;
 use LeCercle\Tests\Support\InMemoryMembers;
+use LeCercle\Tests\Support\InMemoryThrottle;
 use LeCercle\Tests\Support\MemberFactory;
 use LeCercle\Tests\Support\RecordingAdminJournal;
 use LeCercle\Tests\Support\RecordingGameEndListener;
@@ -83,6 +84,7 @@ trait GameServiceFixture
             new GameViews($members, $this->rules),
             $listener ?? new RecordingGameEndListener(),
             $this->archive,
+            new InMemoryThrottle(),
         );
     }
 

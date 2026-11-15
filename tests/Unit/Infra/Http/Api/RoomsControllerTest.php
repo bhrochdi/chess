@@ -19,6 +19,7 @@ use LeCercle\Tests\Support\ImmediateTransactionRunner;
 use LeCercle\Tests\Support\InMemoryMembers;
 use LeCercle\Tests\Support\InMemoryRoomMessageRepository;
 use LeCercle\Tests\Support\InMemoryRoomRepository;
+use LeCercle\Tests\Support\InMemoryThrottle;
 use LeCercle\Tests\Support\MemberFactory;
 use LeCercle\Tests\Support\RecordingAdminJournal;
 use PHPUnit\Framework\TestCase;
@@ -228,6 +229,7 @@ final class RoomsControllerTest extends TestCase
             $this->journal,
             new ImmediateTransactionRunner(),
             $this->members,
+            new InMemoryThrottle(),
         );
 
         return (new HttpKernel(new ExceptionMapper(fn() => null)))

@@ -12,6 +12,7 @@ use LeCercle\Shared\Member;
 use LeCercle\Shared\Millis;
 use LeCercle\Shared\Role;
 use LeCercle\Shared\SessionLogin;
+use LeCercle\Shared\Throttle;
 use LeCercle\Shared\TooManyRequestsException;
 use LeCercle\Shared\TransactionRunner;
 use LeCercle\Shared\ValidationException;
@@ -32,6 +33,17 @@ final class AuthService
 
     public const WINDOW_MS = 900_000;
 
+    /** Comptes créés par adresse du client et par heure : une soirée de club derrière une même connexion passe. */
+    public const MAX_GUESTS_PER_ADDRESS = 30;
+
+    public const MAX_REGISTRATIONS_PER_ADDRESS = 30;
+
+    public const ACCOUNTS_WINDOW_MS = 3_600_000;
+
+    public const TOO_MANY_GUESTS = 'Trop de comptes invités créés depuis cette connexion. Réessaie plus tard.';
+
+    public const TOO_MANY_REGISTRATIONS = 'Trop d’inscriptions depuis cette connexion. Réessaie plus tard.';
+
     /** Empreinte bcrypt (coût 10) d'un mot de passe inconnu : sert à dépenser le même calcul pour un identifiant inexistant. */
     private const DUMMY_HASH = '$2y$10$//qkiFPmYYiuJVWLcGVtvOSaxRTIz/.xrvqcU3Up3p0xNkjEgINp2';
 
@@ -44,14 +56,17 @@ final class AuthService
         private readonly TransactionRunner $transactions,
         private readonly UserViews $views,
         private readonly LoginAttempts $attempts,
+        private readonly Throttle $throttle,
     ) {}
 
     /** @return array<string, mixed> */
-    public function register(string $pseudo, string $email, string $password): array
+    public function register(string $pseudo, string $email, string $password, string $address = ''): array
     {
         $pseudo = UserFields::pseudo($pseudo);
         $email = UserFields::email($email);
         $password = UserFields::password($password);
+        // Avant le hachage : une inscription refusée ne coûte pas un calcul bcrypt.
+        $this->limitAccounts('register', $address, self::MAX_REGISTRATIONS_PER_ADDRESS, self::TOO_MANY_REGISTRATIONS);
         $hash = $this->hasher->hash($password);
 
         $user = $this->transactions->run(function () use ($pseudo, $email, $hash): User {
@@ -124,12 +139,13 @@ final class AuthService
      *
      * @return array<string, mixed>
      */
-    public function guest(?string $pseudo): array
+    public function guest(?string $pseudo, string $address = ''): array
     {
         if ($this->access->viewer() !== null) {
             throw new ConflictException('Tu es déjà connecté.');
         }
         $chosen = $pseudo === null ? null : UserFields::pseudo($pseudo);
+        $this->limitAccounts('guest', $address, self::MAX_GUESTS_PER_ADDRESS, self::TOO_MANY_GUESTS);
 
         $user = $this->transactions->run(function () use ($chosen): User {
             if ($chosen !== null) {
@@ -199,6 +215,17 @@ final class AuthService
         $user = $viewer === null ? null : $this->users->find($viewer->id);
 
         return $user === null ? null : $this->views->user($user, $viewer);
+    }
+
+    /** Créations de comptes par adresse du client ; sans adresse connue, rien n'est compté. */
+    private function limitAccounts(string $kind, string $address, int $max, string $message): void
+    {
+        if ($address === '') {
+            return;
+        }
+        if (!$this->throttle->allow($kind . ':' . $address, $max, self::ACCOUNTS_WINDOW_MS, Millis::of($this->clock->now()))) {
+            throw new TooManyRequestsException($message);
+        }
     }
 
     private static function member(User $user): Member

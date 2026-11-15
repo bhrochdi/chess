@@ -26,5 +26,6 @@ HttpKernel::serve(static function (): ActionRouter {
         $infra->adminJournal(),
         $infra->transactions(),
         $infra->members(),
+        $infra->throttle(),
     )))->routes();
 });

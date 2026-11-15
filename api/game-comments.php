@@ -23,5 +23,6 @@ HttpKernel::serve(static function (): ActionRouter {
         $infra->access(),
         $infra->clock(),
         new MessageViews($infra->members()),
+        $infra->throttle(),
     )))->routes();
 });

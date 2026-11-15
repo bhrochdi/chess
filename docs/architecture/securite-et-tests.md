@@ -10,6 +10,9 @@
 | Requêtes concurrentes ou en retard | verrou de ligne (`FOR UPDATE`) dans une transaction par écriture ; numéro de demi-coup attendu (`ply`) sur chaque coup |
 | Vol de mot de passe en base | `password_hash` (bcrypt) ; aucune empreinte dans une réponse |
 | Essais de mots de passe en série | 5 échecs par compte ou 20 par adresse en 15 minutes, puis 429 ; clés hachées en base |
+| Création de comptes en masse | 30 comptes invités et 30 inscriptions par adresse et par heure, puis 429 |
+| Inondation des salons, des messages privés ou des commentaires | 8 messages par compte en 20 secondes, tous canaux confondus, puis 429 |
+| Inondation de la liste des défis ou de la base | 5 défis en ligne et 30 parties locales par compte en 10 minutes, puis 429 |
 | Découverte des comptes existants | même message et même temps de calcul pour un compte inconnu et un mauvais mot de passe |
 | Fixation de session | identifiant de session régénéré à la connexion, session détruite à la déconnexion |
 | Injection SQL | requêtes préparées partout (PDO) |

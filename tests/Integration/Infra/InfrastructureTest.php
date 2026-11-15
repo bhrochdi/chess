@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace LeCercle\Tests\Integration\Infra;
 
 use LeCercle\Infra\Admin\PdoAdminJournal;
+use LeCercle\Infra\Db\PdoThrottle;
 use LeCercle\Infra\Db\PdoTransactionRunner;
 use LeCercle\Infra\Infrastructure;
 use LeCercle\Infra\Session\PhpSession;
@@ -52,6 +53,8 @@ final class InfrastructureTest extends TestCase
         self::assertSame($infra->access(), $infra->access());
         self::assertInstanceOf(PdoAdminJournal::class, $infra->adminJournal());
         self::assertSame($infra->adminJournal(), $infra->adminJournal());
+        self::assertInstanceOf(PdoThrottle::class, $infra->throttle());
+        self::assertSame($infra->throttle(), $infra->throttle());
     }
 
     public function testMissingConfigurationFailsOnFirstPdoNotOnConstruction(): void

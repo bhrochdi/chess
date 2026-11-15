@@ -28,11 +28,11 @@ suivent le [tableau des contrats communs](infrastructure.md#contrats-communs-des
 
 | Action | Paramètres | Accès | Réponse |
 |--------|------------|-------|---------|
-| `register` | `pseudo`, `email`, `password` | visiteur | `{ user }` ; le premier compte inscrit devient administrateur |
+| `register` | `pseudo`, `email`, `password` | visiteur | `{ user }` ; le premier compte inscrit devient administrateur ; 429 après trop d'inscriptions (voir plus bas) |
 | `login` | `identifiant` (pseudo ou e-mail), `password` | visiteur | `{ user }` ; 429 après trop d'échecs (voir plus bas) |
 | `logout` | | tous | `{}` |
 | `me` | | tous | `{ user }`, `null` sans session |
-| `guest` | `pseudo?` | visiteur | `{ user }` : compte invité |
+| `guest` | `pseudo?` | visiteur | `{ user }` : compte invité ; 429 après trop de créations (voir plus bas) |
 | `claimAdmin` | | compte inscrit | `{ user }` ; 409 si un administrateur existe |
 | `list` | | admin | `{ users }` |
 | `adminUpdate` | `targetId`, `op` | admin | `{}` |
@@ -115,6 +115,21 @@ le compte (clé étrangère `ON DELETE CASCADE`).
 administrateurs, le front ne peut pas savoir s'il existe déjà un administrateur :
 « Devenir administrateur » reste proposé aux comptes inscrits, et le 409 « Un
 administrateur existe déjà. » le masque pour la session.
+
+## Limitation des créations de comptes
+
+Une même adresse crée au plus 30 comptes invités et, comptées à part, 30
+inscriptions par heure. Au-delà, `guest` répond 429 « Trop de comptes invités
+créés depuis cette connexion. Réessaie plus tard. » et `register` 429 « Trop
+d'inscriptions depuis cette connexion. Réessaie plus tard. », sans créer de
+compte. La limite est large exprès : les membres d'un club réunis derrière une
+même connexion doivent pouvoir s'inscrire le même soir. Une demande refusée
+pour sa saisie (pseudo, e-mail, mot de passe) ne compte pas ; une demande
+refusée ensuite (pseudo déjà pris) compte. Le contrôle a lieu avant le hachage
+du mot de passe. L'adresse est `REMOTE_ADDR`, comme pour la connexion ; sans
+adresse connue, rien n'est compté. Le décompte passe par le port
+`Shared\Throttle` ([Infrastructure](infrastructure.md)), sous les clés
+`guest:<adresse>` et `register:<adresse>`.
 
 ## Limitation des tentatives de connexion
 

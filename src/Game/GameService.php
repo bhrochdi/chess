@@ -14,8 +14,11 @@ use LeCercle\Shared\Clock;
 use LeCercle\Shared\ConflictException;
 use LeCercle\Shared\ForbiddenException;
 use LeCercle\Shared\Member;
+use LeCercle\Shared\Millis;
 use LeCercle\Shared\NotFoundException;
+use LeCercle\Shared\Throttle;
 use LeCercle\Shared\TimeControl;
+use LeCercle\Shared\TooManyRequestsException;
 use LeCercle\Shared\TransactionRunner;
 use LeCercle\Shared\ValidationException;
 
@@ -29,6 +32,13 @@ final class GameService
     public const LOBBY_LIMIT = 30;
     public const MINE_LIMIT = 10;
     public const ADMIN_LIST_LIMIT = 200;
+
+    /** Créations par compte en dix minutes : défis en ligne d'une part, parties locales ou contre l'ordinateur de l'autre. */
+    public const MAX_CHALLENGES = 5;
+    public const MAX_LOCAL_GAMES = 30;
+    public const CREATE_WINDOW_MS = 600_000;
+    public const TOO_MANY_CHALLENGES = 'Tu as créé trop de défis. Patiente quelques minutes.';
+    public const TOO_MANY_GAMES = 'Tu crées des parties trop vite. Patiente quelques minutes.';
 
     private readonly PgnWriter $pgn;
 
@@ -44,6 +54,7 @@ final class GameService
         private readonly GameViews $views,
         private readonly GameEndListener $ended,
         private readonly ResultArchive $archive,
+        private readonly Throttle $throttle,
     ) {
         $this->pgn = new PgnWriter();
     }
@@ -62,6 +73,13 @@ final class GameService
             : null;
         $creatorColor = $gameMode === GameMode::Online ? $this->creatorColor($color) : null;
         $tc = TimeControl::fromArray($timeControl);
+        // Après les contrôles de saisie, avant la transaction : une demande invalide ne compte pas.
+        [$key, $max, $message] = $gameMode === GameMode::Online
+            ? ['challenge:', self::MAX_CHALLENGES, self::TOO_MANY_CHALLENGES]
+            : ['game:', self::MAX_LOCAL_GAMES, self::TOO_MANY_GAMES];
+        if (!$this->throttle->allow($key . $actor->id, $max, self::CREATE_WINDOW_MS, Millis::of($this->clock->now()))) {
+            throw new TooManyRequestsException($message);
+        }
 
         $game = $this->transactions->run(function () use ($actor, $gameMode, $aiLevel, $creatorColor, $tc): Game {
             $id = $this->games->nextId();

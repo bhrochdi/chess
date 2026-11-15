@@ -16,6 +16,7 @@ use LeCercle\Tests\Support\FakeSession;
 use LeCercle\Tests\Support\FixedClock;
 use LeCercle\Tests\Support\InMemoryGameCommentRepository;
 use LeCercle\Tests\Support\InMemoryMembers;
+use LeCercle\Tests\Support\InMemoryThrottle;
 use LeCercle\Tests\Support\KnownGames;
 use LeCercle\Tests\Support\MemberFactory;
 use PHPUnit\Framework\TestCase;
@@ -85,6 +86,7 @@ final class GameCommentsControllerTest extends TestCase
             new Access(new FakeSession($userId), $this->members),
             new FixedClock(Millis::toDateTime(1794477600123)),
             new MessageViews($this->members),
+            new InMemoryThrottle(),
         );
 
         return (new HttpKernel(new ExceptionMapper(fn() => null)))

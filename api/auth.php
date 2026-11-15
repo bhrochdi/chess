@@ -24,7 +24,7 @@ HttpKernel::serve(static function (): ActionRouter {
     $views = new UserViews(new PdoGameStats($infra->pdo()));
 
     return (new AuthController(
-        new AuthService($users, new PhpPasswordHasher(), $infra->session(), $infra->access(), $infra->clock(), $infra->transactions(), $views, new PdoLoginAttempts($infra->pdo())),
+        new AuthService($users, new PhpPasswordHasher(), $infra->session(), $infra->access(), $infra->clock(), $infra->transactions(), $views, new PdoLoginAttempts($infra->pdo()), $infra->throttle()),
         new UserAdminService($users, $infra->access(), $infra->adminJournal(), $infra->transactions(), $views, $infra->clock()),
         new PresenceService($users, $infra->access(), $infra->clock()),
         // Adresse vue par Apache ; aucun mandataire n'est placé devant l'application.

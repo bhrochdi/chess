@@ -10,6 +10,7 @@ use LeCercle\Tests\Support\FakeSession;
 use LeCercle\Tests\Support\FixedClock;
 use LeCercle\Tests\Support\ImmediateTransactionRunner;
 use LeCercle\Tests\Support\InMemoryLoginAttempts;
+use LeCercle\Tests\Support\InMemoryThrottle;
 use LeCercle\Tests\Support\InMemoryUserRepository;
 use LeCercle\Tests\Support\PlainPasswordHasher;
 use LeCercle\Tests\Support\UserRepositoryMembers;
@@ -46,6 +47,7 @@ abstract class AuthServiceTestCase extends TestCase
             new ImmediateTransactionRunner(),
             new UserViews(new FixedGameStats()),
             $this->attempts,
+            new InMemoryThrottle(),
         );
     }
 }

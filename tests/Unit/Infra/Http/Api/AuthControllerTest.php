@@ -14,6 +14,7 @@ use LeCercle\Tests\Support\FakeSession;
 use LeCercle\Tests\Support\FixedClock;
 use LeCercle\Tests\Support\ImmediateTransactionRunner;
 use LeCercle\Tests\Support\InMemoryLoginAttempts;
+use LeCercle\Tests\Support\InMemoryThrottle;
 use LeCercle\Tests\Support\InMemoryUserRepository;
 use LeCercle\Tests\Support\PlainPasswordHasher;
 use LeCercle\Tests\Support\RecordingAdminJournal;
@@ -45,7 +46,7 @@ final class AuthControllerTest extends TestCase
         $transactions = new ImmediateTransactionRunner();
         $views = new UserViews(new FixedGameStats());
         $this->controller = new AuthController(
-            new AuthService($this->users, new PlainPasswordHasher(), $this->session, $access, $clock, $transactions, $views, new InMemoryLoginAttempts()),
+            new AuthService($this->users, new PlainPasswordHasher(), $this->session, $access, $clock, $transactions, $views, new InMemoryLoginAttempts(), new InMemoryThrottle()),
             new UserAdminService($this->users, $access, $this->journal, $transactions, $views, $clock),
             new PresenceService($this->users, $access, $clock),
             '203.0.113.9',
@@ -157,6 +158,26 @@ final class AuthControllerTest extends TestCase
         self::assertSame(
             [429, ['ok' => false, 'error' => 'Trop de tentatives de connexion. Réessaie dans quelques minutes.']],
             $this->call('{"action":"login","identifiant":"autre","password":"x"}'),
+        );
+    }
+
+    public function testAccountCreationsAreLimitedByTheClientAddress(): void
+    {
+        for ($i = 0; $i < AuthService::MAX_GUESTS_PER_ADDRESS; ++$i) {
+            self::assertSame(200, $this->callAnonymous('{"action":"guest"}')[0]);
+        }
+        self::assertSame(
+            [429, ['ok' => false, 'error' => 'Trop de comptes invités créés depuis cette connexion. Réessaie plus tard.']],
+            $this->callAnonymous('{"action":"guest"}'),
+        );
+
+        for ($i = 0; $i < AuthService::MAX_REGISTRATIONS_PER_ADDRESS; ++$i) {
+            $this->register("joueur$i");
+            $this->session->logOut();
+        }
+        self::assertSame(
+            [429, ['ok' => false, 'error' => 'Trop d’inscriptions depuis cette connexion. Réessaie plus tard.']],
+            $this->callAnonymous('{"action":"register","pseudo":"dernier","email":"dernier@x.fr","password":"secret1"}'),
         );
     }
 

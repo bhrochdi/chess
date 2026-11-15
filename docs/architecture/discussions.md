@@ -49,7 +49,7 @@ exige un compte non suspendu pour toutes ses actions.
 | `list` | | tous | `{ rooms }` : salons non archivés |
 | `listAll` | | admin | `{ rooms }` : tous les salons |
 | `messages` | `roomId` | tous ; un salon archivé n'est lisible que par un administrateur (sinon 404) | `{ messages }` : les 80 derniers |
-| `send` | `roomId`, `text` | joueur ; 409 si le salon est archivé | `{ message }` |
+| `send` | `roomId`, `text` | joueur ; 409 si le salon est archivé ; 429 au-delà du débit d'envoi | `{ message }` |
 | `create` | `name`, `description?` | admin | `{ room }` ; 409 si le nom est pris |
 | `rename` | `roomId`, `name` | admin | `{ room }` ; 409 si le nom est pris |
 | `archive` | `roomId`, `archived` | admin | `{ room }` ; 409 si l'on archive « Général » |
@@ -87,6 +87,15 @@ Seules les parties en ligne existantes acceptent des commentaires ; toute autre 
 
 ## Règles
 
+- Débit d'envoi : un compte envoie au plus 8 messages en 20 secondes, tous
+  canaux confondus (salons, messages privés, commentaires de partie). Le
+  suivant répond 429 « Tu envoies des messages trop vite. Patiente quelques
+  secondes. » et n'est pas enregistré. Un message refusé pour une autre raison
+  (vide, trop long, salon archivé) ne compte pas. La règle est dans
+  `MessageRate`, appelée par les trois services juste avant l'enregistrement ;
+  le décompte passe par le port `Shared\Throttle`
+  ([Infrastructure](infrastructure.md)). Le front remet le texte refusé dans le
+  champ de saisie.
 - « Général » (`general`) ne peut être ni archivé (409 « Le salon « Général »
   reste toujours visible. ») ni supprimé (409 « Le salon « Général » ne peut pas
   être supprimé. »).

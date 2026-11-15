@@ -61,6 +61,7 @@ async function sendSalon() {
   const v = $('salonInput').value.trim();
   if (!v) return;
   $('salonInput').value = '';
-  try { await api('rooms', 'send', { roomId: salonRoomId, text: v }); } catch (e) { alert(e.message); }
+  /* Message refusé (envoi trop rapide, salon archivé…) : le texte revient dans le champ. */
+  try { await api('rooms', 'send', { roomId: salonRoomId, text: v }); } catch (e) { if (!$('salonInput').value) $('salonInput').value = v; alert(e.message); }
   refreshSalon();
 }
