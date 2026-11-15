@@ -345,6 +345,8 @@ final class GameServiceTest extends TestCase
         $this->as(self::ALICE);
         for ($i = 0; $i < GameService::LOBBY_LIMIT + 1; ++$i) {
             $service->create('online', null, null, 'w');
+            // Une fenêtre entière entre deux défis : la limite de débit ne s'applique pas.
+            $this->clock->advanceMs(GameService::CREATE_WINDOW_MS);
         }
 
         self::assertCount(30, $service->lobby());

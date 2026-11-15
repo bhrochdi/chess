@@ -22,6 +22,7 @@ use LeCercle\Tests\Support\ImmediateTransactionRunner;
 use LeCercle\Tests\Support\InMemoryMembers;
 use LeCercle\Tests\Support\InMemoryRoomMessageRepository;
 use LeCercle\Tests\Support\InMemoryRoomRepository;
+use LeCercle\Tests\Support\InMemoryThrottle;
 use LeCercle\Tests\Support\MemberFactory;
 use LeCercle\Tests\Support\RecordingAdminJournal;
 use PHPUnit\Framework\TestCase;
@@ -63,6 +64,7 @@ final class RoomServiceTest extends TestCase
             new RecordingAdminJournal(),
             new ImmediateTransactionRunner(),
             $this->members,
+            new InMemoryThrottle(),
         );
     }
 
@@ -87,6 +89,7 @@ final class RoomServiceTest extends TestCase
             new RecordingAdminJournal(),
             new ImmediateTransactionRunner(),
             $this->members,
+            new InMemoryThrottle(),
         );
 
         $out = $service->list();
@@ -147,6 +150,7 @@ final class RoomServiceTest extends TestCase
             new RecordingAdminJournal(),
             new ImmediateTransactionRunner(),
             $members,
+            new InMemoryThrottle(),
         );
         $this->session->logIn(self::ROOT);
 

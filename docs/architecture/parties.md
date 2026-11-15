@@ -61,7 +61,7 @@ répond 400 « Action inconnue. » ; un paramètre absent ou mal typé, 422
 
 | Action | Paramètres | Accès | Réponse | Erreurs |
 |--------|------------|-------|---------|---------|
-| `create` | `mode`, `level` (ordinateur), `tc` (`{ base, inc }` en secondes ou `null`), `color` (en ligne : `w`, `b`, `random`) | compte | `{ game }` : `playing` (local, ordinateur) ou `open` (en ligne) | 403 ; 422 mode, niveau, couleur ou cadence |
+| `create` | `mode`, `level` (ordinateur), `tc` (`{ base, inc }` en secondes ou `null`), `color` (en ligne : `w`, `b`, `random`) | compte | `{ game }` : `playing` (local, ordinateur) ou `open` (en ligne) | 403 ; 422 mode, niveau, couleur ou cadence ; 429 au-delà du débit de création |
 | `join` | `id` | compte | `{ game }` `playing` ; un joueur de la partie la reçoit telle quelle | 404 ; 409 « Cette partie a déjà commencé. » |
 | `get` | `id` | tous (local, ordinateur : propriétaire seulement) | `{ game }` | 404 « Partie introuvable. » |
 | `move` | `id`, `uci`, `ply` (nombre de coups connus du client) | joueur au trait | `{ game }`, réponse de l'ordinateur comprise | 404 ; 403 ; 409 pas en cours, pas ton tour, « La partie a avancé : recharge-la. » ; 422 « Coup illégal. » |
@@ -75,6 +75,13 @@ répond 400 « Action inconnue. » ; un paramètre absent ou mal typé, 422
 
 Une partie locale ou contre l'ordinateur n'existe que pour son propriétaire :
 tout autre visiteur reçoit 404.
+
+Débit de création, par compte et par tranche de 10 minutes : 5 défis en ligne
+(429 « Tu as créé trop de défis. Patiente quelques minutes. ») et, comptées à
+part, 30 parties locales ou contre l'ordinateur (429 « Tu crées des parties
+trop vite. Patiente quelques minutes. »). Une demande invalide ne compte pas ;
+les parties de tournoi ne sont pas limitées. Le décompte passe par le port
+`Shared\Throttle` ([Infrastructure](infrastructure.md)).
 
 Administration, réservée aux administrateurs et journalisée dans la
 même transaction :

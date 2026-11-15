@@ -7,6 +7,7 @@ namespace LeCercle\Infra;
 use LeCercle\Infra\Admin\PdoAdminJournal;
 use LeCercle\Infra\Db\DbConfig;
 use LeCercle\Infra\Db\PdoFactory;
+use LeCercle\Infra\Db\PdoThrottle;
 use LeCercle\Infra\Db\PdoTransactionRunner;
 use LeCercle\Infra\Session\PhpSession;
 use LeCercle\Infra\User\PdoMembers;
@@ -14,6 +15,7 @@ use LeCercle\Shared\Access;
 use LeCercle\Shared\AdminJournal;
 use LeCercle\Shared\Clock;
 use LeCercle\Shared\Members;
+use LeCercle\Shared\Throttle;
 use LeCercle\Shared\TransactionRunner;
 use PDO;
 
@@ -31,6 +33,7 @@ final class Infrastructure
     private ?Members $members = null;
     private ?Access $access = null;
     private ?AdminJournal $adminJournal = null;
+    private ?Throttle $throttle = null;
 
     /** @param \Closure(): DbConfig $config */
     public function __construct(private readonly \Closure $config) {}
@@ -74,5 +77,10 @@ final class Infrastructure
     public function adminJournal(): AdminJournal
     {
         return $this->adminJournal ??= new PdoAdminJournal($this->pdo(), $this->clock());
+    }
+
+    public function throttle(): Throttle
+    {
+        return $this->throttle ??= new PdoThrottle($this->pdo());
     }
 }

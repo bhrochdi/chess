@@ -126,6 +126,10 @@ tel quel. Aucune réponse 500.
      messages d'un salon n'apparaissent pas dans un autre.
 4. Un message vide ou trop long est refusé (« Message vide. » ou « Message trop
    long (… caractères maximum). »).
+5. Envoyer neuf messages courts coup sur coup.
+   - Attendu : le neuvième est refusé (« Tu envoies des messages trop vite.
+     Patiente quelques secondes. ») et son texte reste dans le champ de saisie ;
+     vingt secondes plus tard, l'envoi repasse.
 
 ## 5. Messages privés
 

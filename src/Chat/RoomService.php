@@ -11,6 +11,7 @@ use LeCercle\Shared\ConflictException;
 use LeCercle\Shared\MemberRef;
 use LeCercle\Shared\Members;
 use LeCercle\Shared\NotFoundException;
+use LeCercle\Shared\Throttle;
 use LeCercle\Shared\TransactionRunner;
 use LeCercle\Shared\ValidationException;
 
@@ -28,6 +29,7 @@ final class RoomService
         private readonly AdminJournal $journal,
         private readonly TransactionRunner $transactions,
         private readonly Members $members,
+        private readonly Throttle $throttle,
     ) {}
 
     /** @return list<array<string, mixed>> les salons non archivés */
@@ -69,7 +71,10 @@ final class RoomService
         if ($room->archived) {
             throw new ConflictException('Ce salon est archivé.');
         }
-        $message = $this->messages->add($room->id, $author->id, MessageText::clean($text), $this->clock->now());
+        $text = MessageText::clean($text);
+        $now = $this->clock->now();
+        MessageRate::check($this->throttle, $author->id, $now);
+        $message = $this->messages->add($room->id, $author->id, $text, $now);
 
         return $this->views->one($message);
     }

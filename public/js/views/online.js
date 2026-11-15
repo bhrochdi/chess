@@ -145,6 +145,7 @@ async function sendGameChat() {
   const v = $('gameChatInput').value.trim();
   if (!v) return;
   $('gameChatInput').value = '';
-  try { await api('game-comments', 'send', { gameId: onlineId, text: v }); } catch (e) { alert(e.message); }
+  /* Commentaire refusé : le texte revient dans le champ. */
+  try { await api('game-comments', 'send', { gameId: onlineId, text: v }); } catch (e) { if (!$('gameChatInput').value) $('gameChatInput').value = v; alert(e.message); }
   await syncGameChat();
 }

@@ -25,7 +25,7 @@ final class AuthController
     {
         return new ActionRouter([
             'register' => fn(JsonRequest $r): JsonResponse => JsonResponse::ok([
-                'user' => $this->auth->register($r->string('pseudo'), $r->string('email'), $r->string('password')),
+                'user' => $this->auth->register($r->string('pseudo'), $r->string('email'), $r->string('password'), $this->clientAddress),
             ]),
             'login' => fn(JsonRequest $r): JsonResponse => JsonResponse::ok([
                 'user' => $this->auth->login($r->string('identifiant'), $r->string('password'), $this->clientAddress),
@@ -36,7 +36,9 @@ final class AuthController
                 return JsonResponse::ok();
             },
             'me' => fn(): JsonResponse => JsonResponse::ok(['user' => $this->auth->me()]),
-            'guest' => fn(JsonRequest $r): JsonResponse => JsonResponse::ok(['user' => $this->auth->guest($r->optionalString('pseudo'))]),
+            'guest' => fn(JsonRequest $r): JsonResponse => JsonResponse::ok([
+                'user' => $this->auth->guest($r->optionalString('pseudo'), $this->clientAddress),
+            ]),
             'claimAdmin' => fn(): JsonResponse => JsonResponse::ok(['user' => $this->auth->claimAdmin()]),
             'list' => fn(): JsonResponse => JsonResponse::ok(['users' => $this->admin->list()]),
             'adminUpdate' => function (JsonRequest $r): JsonResponse {

@@ -60,6 +60,7 @@ async function sendDm() {
   const v = $('dmInput').value.trim();
   if (!v) return;
   $('dmInput').value = '';
-  try { await api('direct-messages', 'send', { peerId: dmPeer.id, text: v }); } catch (e) { alert(e.message); }
+  /* Message refusé : le texte revient dans le champ. */
+  try { await api('direct-messages', 'send', { peerId: dmPeer.id, text: v }); } catch (e) { if (!$('dmInput').value) $('dmInput').value = v; alert(e.message); }
   await refreshDm();
 }

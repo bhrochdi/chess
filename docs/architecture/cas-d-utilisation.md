@@ -103,7 +103,8 @@ historique.
 
 **Garanties du serveur :** message de 1 à 500 caractères ; pas d'écriture dans
 un salon archivé ; « Général » ne peut être ni archivé ni supprimé ; les 80
-derniers messages sont servis.
+derniers messages sont servis ; un compte envoie au plus 8 messages en 20
+secondes, salons, messages privés et commentaires confondus.
 
 **Code :** `src/Chat/RoomService`, `api/rooms.php` ; `public/js/views/salon.js`.
 

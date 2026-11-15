@@ -1,7 +1,7 @@
 // Cohérence entre public/index.html et public/js/ : chaque <script src> existe, et chaque
 // fichier js/**/*.js est chargé exactement une fois.
 import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs';
-import { join, relative } from 'node:path';
+import { join, relative, sep } from 'node:path';
 
 const root = 'public';
 
@@ -22,7 +22,8 @@ const walk = (dir) => readdirSync(dir).flatMap((e) => {
   const p = join(dir, e);
   return statSync(p).isDirectory() ? walk(p) : [p];
 });
-for (const p of walk(join(root, 'js')).map((f) => relative(root, f))) {
+// Séparateur « / » comme dans index.html : sous Windows, relative() renvoie des « \ ».
+for (const p of walk(join(root, 'js')).map((f) => relative(root, f).split(sep).join('/'))) {
   if (p.endsWith('.js') && !counts.has(p)) {
     errors.push(`${p} : jamais chargé par index.html`);
   }

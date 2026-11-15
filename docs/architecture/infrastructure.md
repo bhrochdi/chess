@@ -24,6 +24,7 @@ sans argument ou avec `'now'`. Les services (`Game`, `Chat`, `Tournament`,
 | `Shared\Role`, `Member`, `Members`, `Infra\User\PdoMembers` | Rôle, compte (pseudo, suspendu, invité) et lecture des comptes par identifiant ou pseudo, sans casse. `findMany` résout plusieurs identifiants en une requête. |
 | `Shared\Access` | Acteur de la requête : `viewer()` (null si personne n'est connecté), `member()` (403 si non connecté ou suspendu), `admin()` (403 si non administrateur). |
 | `Shared\AdminJournal`, `Infra\Admin\PdoAdminJournal` | Une ligne dans `admin_log` par action d'administration, avec la phrase française affichée dans le journal. |
+| `Shared\Throttle`, `Infra\Db\PdoThrottle` | Limite de débit : `allow(clé, max, fenêtre, instant)` compte un événement, ou répond faux si `max` événements sont déjà comptés dans la fenêtre. Table `throttle_hits`, clés stockées sous leur empreinte SHA-256, lignes de plus de 24 h effacées à chaque écriture. L'événement est inscrit avant d'être compté, hors transaction : des requêtes simultanées ne dépassent pas la limite ensemble. Utilisé pour les créations de comptes, de parties et les messages ; le service qui refuse lève `TooManyRequestsException`. |
 | `Shared\MemberRef` | Personne telle que l'API la renvoie, `{id, pseudo}` ; un compte supprimé devient `(compte supprimé)`. |
 | `Shared\Millis` | Conversion entre `DateTimeImmutable` et millisecondes depuis l'époque Unix. |
 | `Shared\TimeControl` | Cadence `{base, inc}` en secondes (base 1 à 10 800, incrément 0 à 180), commune aux parties et aux tournois. |
@@ -33,7 +34,7 @@ sans argument ou avec `'now'`. Les services (`Game`, `Chat`, `Tournament`,
 | `Infra\Db\Migration`, `MigrationDirectory`, `Migrator` | Lecture de `sql/migrations/` et application des migrations pas encore enregistrées (`php bin/migrate.php`). |
 | `Infra\Http\JsonRequest`, `JsonResponse` | Corps JSON `{"action": …}` lu avec des types stricts ; réponses `{"ok": true, …}` ou `{"ok": false, "error": …}`. |
 | `Infra\Http\ActionRouter`, `HttpKernel`, `ExceptionMapper`, `HttpException` | Routage par action, POST seulement, traduction des exceptions en statuts HTTP. |
-| `Infra\Infrastructure` | Briques partagées de la racine de composition (PDO, horloge, session, transactions, comptes, accès, journal d'administration), créées à la demande. |
+| `Infra\Infrastructure` | Briques partagées de la racine de composition (PDO, horloge, session, transactions, comptes, accès, journal d'administration, limite de débit), créées à la demande. |
 
 Chaque ressource a son point d'entrée `api/<ressource>.php`, qui construit à la
 main le graphe de ses services ; `api/health.php` sert de modèle :
@@ -70,7 +71,7 @@ sequenceDiagram
 | `NotFoundException` | 404 | le sien |
 | `ForbiddenException` (dont `Connexion requise.`) | 403 | le sien |
 | `ConflictException` | 409 | le sien |
-| `TooManyRequestsException` (connexion) | 429 | le sien |
+| `TooManyRequestsException` (connexion, créations de comptes et de parties, messages) | 429 | le sien |
 | toute autre exception | 500 | `Erreur interne du serveur.` ; classe, message, fichier et ligne vont au journal PHP |
 
 Migrations : un fichier `sql/migrations/NNN-nom-en-kebab.sql` par changement,
@@ -83,7 +84,8 @@ seule source du schéma : `php bin/migrate.php`
 crée toutes les tables d'une base vide. `002-journal-admin`
 crée `admin_log`, le journal des actions d'administration ; `500-retrait-kv-store`
 supprime `kv_store` et `stat_records`, `501-nettoyage-utilisateurs` les colonnes
-`users.stats`, `legacy_salt` et `legacy_hash`.
+`users.stats`, `legacy_salt` et `legacy_hash`. `503-limitation-de-debit` crée
+`throttle_hits`, la table du port `Throttle`.
 
 Tests d'intégration : `tests/Integration/` utilise la base `le_cercle_test`
 (créée par `docker/mysql/initdb/02-test-database.sh`) et refuse toute base dont

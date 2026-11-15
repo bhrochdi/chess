@@ -21,6 +21,7 @@ use LeCercle\Tests\Support\ImmediateTransactionRunner;
 use LeCercle\Tests\Support\InMemoryMembers;
 use LeCercle\Tests\Support\InMemoryRoomMessageRepository;
 use LeCercle\Tests\Support\InMemoryRoomRepository;
+use LeCercle\Tests\Support\InMemoryThrottle;
 use LeCercle\Tests\Support\MemberFactory;
 use LeCercle\Tests\Support\RecordingAdminJournal;
 use LeCercle\Tests\Support\TrackingTransactionRunner;
@@ -66,6 +67,7 @@ final class RoomAdminTest extends TestCase
             $this->journal,
             new ImmediateTransactionRunner(),
             $members,
+            new InMemoryThrottle(),
         );
     }
 
@@ -187,6 +189,7 @@ final class RoomAdminTest extends TestCase
             $this->journal,
             new ImmediateTransactionRunner(),
             $members,
+            new InMemoryThrottle(),
         );
 
         $out = $service->move('rb', 'up');
@@ -287,6 +290,7 @@ final class RoomAdminTest extends TestCase
             $journal,
             $runner,
             $members,
+            new InMemoryThrottle(),
         );
 
         $this->perform($action, $service);
@@ -307,6 +311,7 @@ final class RoomAdminTest extends TestCase
             $this->journal,
             new ImmediateTransactionRunner(),
             $members,
+            new InMemoryThrottle(),
         );
 
         $this->expectError(ForbiddenException::class, 'Compte suspendu par l’administration.', fn() => $service->create('Nouveau', ''));

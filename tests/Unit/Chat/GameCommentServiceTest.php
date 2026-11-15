@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace LeCercle\Tests\Unit\Chat;
 
 use LeCercle\Chat\GameCommentService;
+use LeCercle\Chat\MessageRate;
 use LeCercle\Chat\MessageViews;
 use LeCercle\Shared\Access;
 use LeCercle\Shared\ForbiddenException;
@@ -16,6 +17,7 @@ use LeCercle\Tests\Support\FakeSession;
 use LeCercle\Tests\Support\FixedClock;
 use LeCercle\Tests\Support\InMemoryGameCommentRepository;
 use LeCercle\Tests\Support\InMemoryMembers;
+use LeCercle\Tests\Support\InMemoryThrottle;
 use LeCercle\Tests\Support\KnownGames;
 use LeCercle\Tests\Support\MemberFactory;
 use PHPUnit\Framework\Attributes\DataProvider;
@@ -33,6 +35,7 @@ final class GameCommentServiceTest extends TestCase
     private InMemoryGameCommentRepository $comments;
     private CountingMembers $members;
     private FakeSession $session;
+    private FixedClock $clock;
     private GameCommentService $service;
 
     protected function setUp(): void
@@ -49,8 +52,9 @@ final class GameCommentServiceTest extends TestCase
             $this->comments,
             new KnownGames(self::GAME, 'g0123456789ac'),
             new Access($this->session, $this->members),
-            new FixedClock(Millis::toDateTime(1794477600123)),
+            $this->clock = new FixedClock(Millis::toDateTime(1794477600123)),
             new MessageViews($this->members),
+            new InMemoryThrottle(),
         );
     }
 
@@ -113,6 +117,8 @@ final class GameCommentServiceTest extends TestCase
         $this->session->logIn(self::ALICE);
         for ($i = 1; $i <= 85; ++$i) {
             $this->service->send(self::GAME, "c$i");
+            // Une fenêtre entière entre deux envois : la limite de débit ne s'applique pas.
+            $this->clock->advanceMs(MessageRate::WINDOW_MS);
         }
 
         $texts = array_column($this->service->list(self::GAME), 'text');

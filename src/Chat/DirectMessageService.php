@@ -11,6 +11,7 @@ use LeCercle\Shared\MemberRef;
 use LeCercle\Shared\Members;
 use LeCercle\Shared\Millis;
 use LeCercle\Shared\NotFoundException;
+use LeCercle\Shared\Throttle;
 use LeCercle\Shared\ValidationException;
 
 /** Messages privés entre joueurs et compteurs de non-lus. */
@@ -25,6 +26,7 @@ final class DirectMessageService
         private readonly Members $members,
         private readonly Clock $clock,
         private readonly MessageViews $views,
+        private readonly Throttle $throttle,
     ) {}
 
     /** @return array{id: string, pseudo: string} */
@@ -77,7 +79,10 @@ final class DirectMessageService
         $me = $this->access->member();
         $peer = $this->peer($peerId);
         $this->assertNotSelf($me->id, $peer->id);
-        $message = $this->messages->add($me->id, $peer->id, MessageText::clean($text), $this->clock->now());
+        $text = MessageText::clean($text);
+        $now = $this->clock->now();
+        MessageRate::check($this->throttle, $me->id, $now);
+        $message = $this->messages->add($me->id, $peer->id, $text, $now);
 
         return $this->views->one($message);
     }

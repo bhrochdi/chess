@@ -17,6 +17,7 @@ use LeCercle\Tests\Support\FakeSession;
 use LeCercle\Tests\Support\FixedClock;
 use LeCercle\Tests\Support\InMemoryDirectMessageRepository;
 use LeCercle\Tests\Support\InMemoryMembers;
+use LeCercle\Tests\Support\InMemoryThrottle;
 use LeCercle\Tests\Support\MemberFactory;
 use PHPUnit\Framework\TestCase;
 
@@ -182,6 +183,7 @@ final class DirectMessageServiceTest extends TestCase
             $members,
             new FixedClock(new \DateTimeImmutable('2026-11-12 10:00:00')),
             new MessageViews($members),
+            new InMemoryThrottle(),
         );
     }
 
