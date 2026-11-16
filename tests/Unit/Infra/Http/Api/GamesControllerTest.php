@@ -29,7 +29,7 @@ final class GamesControllerTest extends TestCase
         self::assertSame('local', $body['game']['mode']);
         self::assertSame(
             ['id', 'mode', 'status', 'level', 'white', 'black', 'tc', 'fen', 'turn', 'moves', 'lastMove', 'legalMoves',
-                'inCheck', 'captured', 'clock', 'drawOffer', 'result', 'reason', 'yourColor', 'createdAt', 'updatedAt'],
+                'inCheck', 'captured', 'clock', 'drawOffer', 'result', 'reason', 'yourColor', 'createdAt', 'updatedAt', 'version'],
             array_keys($body['game']),
         );
     }
@@ -165,5 +165,27 @@ final class GamesControllerTest extends TestCase
 
         return (new HttpKernel(new ExceptionMapper(fn() => null)))
             ->handle('POST', $json, fn() => (new GamesController($service))->routes());
+    }
+
+    public function testGetWithTheKnownVersionAnswersUnchanged(): void
+    {
+        $game = $this->call('{"action":"create","mode":"local"}', self::ALICE)[1]['game'];
+        $get = static fn(string $known): string => json_encode(['action' => 'get', 'id' => $game['id'], 'known' => $known], JSON_THROW_ON_ERROR);
+
+        self::assertSame('{"ok":true,"unchanged":true}', $this->respond($get($game['version']), self::ALICE)->json);
+
+        [$status, $body] = $this->call($get('autre'), self::ALICE);
+        self::assertSame(200, $status);
+        self::assertSame($game['id'], $body['game']['id']);
+    }
+
+    public function testGetKnownMustBeAString(): void
+    {
+        $id = $this->call('{"action":"create","mode":"local"}', self::ALICE)[1]['game']['id'];
+
+        [$status, $body] = $this->call('{"action":"get","id":"' . $id . '","known":12}', self::ALICE);
+
+        self::assertSame(422, $status);
+        self::assertSame('Paramètre « known » manquant ou invalide.', $body['error']);
     }
 }

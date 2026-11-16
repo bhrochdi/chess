@@ -12,6 +12,9 @@ interface DirectMessageRepository
     /** @return list<ChatMessage> les $limit plus récents entre les deux joueurs, du plus ancien au plus récent */
     public function conversation(string $userId, string $peerId, int $limit): array;
 
+    /** Identifiant du message le plus récent entre les deux joueurs, 0 s'ils ne se sont rien écrit. */
+    public function lastId(string $userId, string $peerId): int;
+
     /** @return list<ThreadSummary> une par interlocuteur, dernier message le plus récent d'abord ; non-lus = messages de l'interlocuteur au-dessus de la marque de lecture */
     public function threads(string $userId, int $limit): array;
 

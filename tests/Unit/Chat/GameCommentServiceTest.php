@@ -171,4 +171,22 @@ final class GameCommentServiceTest extends TestCase
             self::assertSame($message, $e->getMessage());
         }
     }
+
+    public function testListIfNewAnswersNullWhileTheLastCommentIsKnown(): void
+    {
+        self::assertNull($this->service->listIfNew(self::GAME, 0));
+        $this->session->logIn(self::ALICE);
+        $id = $this->service->send(self::GAME, 'ici')['id'];
+        self::assertIsInt($id);
+
+        self::assertSame(['ici'], array_column($this->service->listIfNew(self::GAME, 0) ?? [], 'text'));
+        $this->members->findManyCalls = 0;
+        self::assertNull($this->service->listIfNew(self::GAME, $id));
+        self::assertSame(0, $this->members->findManyCalls);
+    }
+
+    public function testListIfNewOfAnUnknownGameIsNotFound(): void
+    {
+        $this->expectError(NotFoundException::class, 'Partie introuvable.', fn() => $this->service->listIfNew('g000000000000', 0));
+    }
 }

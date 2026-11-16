@@ -31,6 +31,14 @@ final class PdoRoomMessageRepository implements RoomMessageRepository
         return array_values(array_reverse(array_map(self::hydrate(...), $stmt->fetchAll())));
     }
 
+    public function lastId(string $roomId): int
+    {
+        $stmt = $this->pdo->prepare('SELECT COALESCE(MAX(id), 0) FROM room_messages WHERE room_id = ?');
+        $stmt->execute([$roomId]);
+
+        return (int) $stmt->fetchColumn();
+    }
+
     public function find(string $roomId, int $id): ?ChatMessage
     {
         $stmt = $this->pdo->prepare('SELECT id, author_id, body, created_at FROM room_messages WHERE room_id = ? AND id = ?');

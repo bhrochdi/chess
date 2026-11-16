@@ -117,6 +117,25 @@ final class GameService
         return $this->view($this->readable($id, $viewer), $viewer);
     }
 
+    /**
+     * Relecture périodique : $known est la « version » de l'état que le navigateur affiche. Répond null si
+     * la partie n'a pas changé ; une lecture légère suffit alors, la partie n'est ni rechargée ni rejouée.
+     * Un drapeau tombé depuis force la lecture entière, qui enregistre la fin.
+     *
+     * @return array<string, mixed>|null
+     */
+    public function getIfChanged(string $id, string $known): ?array
+    {
+        $viewer = $this->access->viewer();
+        $pulse = $this->games->pulse($id);
+        $this->assertVisible($pulse->mode, $pulse->ownerId, $viewer);
+        if ($pulse->version() === $known && !$pulse->flagFallen($this->clock->now())) {
+            return null;
+        }
+
+        return $this->view($this->readable($id, $viewer), $viewer);
+    }
+
     /** @return array<string, mixed> */
     public function move(string $id, string $uci, int $ply): array
     {
@@ -340,11 +359,16 @@ final class GameService
     /** Une partie locale ou contre l'ordinateur n'existe que pour son propriétaire. */
     private function visible(Game $game, ?Member $viewer): Game
     {
-        if ($game->mode() !== GameMode::Online && $game->ownerId() !== $viewer?->id) {
-            throw new NotFoundException('Partie introuvable.');
-        }
+        $this->assertVisible($game->mode(), $game->ownerId(), $viewer);
 
         return $game;
+    }
+
+    private function assertVisible(GameMode $mode, string $ownerId, ?Member $viewer): void
+    {
+        if ($mode !== GameMode::Online && $ownerId !== $viewer?->id) {
+            throw new NotFoundException('Partie introuvable.');
+        }
     }
 
     /** Le coup de l'ordinateur est daté après son choix : son temps de réflexion est décompté de sa pendule. */

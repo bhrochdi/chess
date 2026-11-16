@@ -19,9 +19,14 @@ final class DirectMessagesController
         return new ActionRouter([
             'open' => fn(JsonRequest $r): JsonResponse => JsonResponse::ok(['peer' => $this->service->open($r->string('pseudo'))]),
             'threads' => fn(JsonRequest $r): JsonResponse => JsonResponse::ok($this->service->threads()),
-            'conversation' => fn(JsonRequest $r): JsonResponse => JsonResponse::ok([
-                'messages' => $this->service->conversation($r->string('peerId')),
-            ]),
+            'conversation' => function (JsonRequest $r): JsonResponse {
+                $known = $r->optionalInt('known');
+                $messages = $known === null
+                    ? $this->service->conversation($r->string('peerId'))
+                    : $this->service->conversationIfNew($r->string('peerId'), $known);
+
+                return $messages === null ? JsonResponse::unchanged() : JsonResponse::ok(['messages' => $messages]);
+            },
             'send' => fn(JsonRequest $r): JsonResponse => JsonResponse::ok([
                 'message' => $this->service->send($r->string('peerId'), $r->string('text')),
             ]),

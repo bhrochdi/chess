@@ -8,7 +8,10 @@ let onlineId = null;
 let onlinePoll = null;
 let onlineBusy = false;
 let orFlagAsked = false;
-let lastChatId = null;
+let orViewer = null;        // compte pour lequel OR a été reçu (yourColor et les coups légaux en dépendent)
+let lastChatId = null;      // dernier commentaire affiché : null avant la première réponse, 0 pour un fil vide
+
+const viewerId = () => (currentUser ? currentUser.id : null);
 
 const isMyTurn = () => !!OR && OR.status === 'playing' && OR.legalMoves.length > 0;
 const playerNames = () => ({ w: OR.white ? OR.white.pseudo : '— attente —', b: OR.black ? OR.black.pseudo : '— attente —' });
@@ -22,9 +25,10 @@ const onlineBoard = ServerBoard($('onlineBoard'), {
 
 /* Garde l'état le plus récent : une réponse en retard ne fait pas reculer l'échiquier. */
 function adoptOnline(game, force) {
-  if (!force && OR && OR.id === game.id && !newer(game, OR) && game.drawOffer === OR.drawOffer) return;
+  if (!force && OR && OR.id === game.id && !newer(game, OR) && game.drawOffer === OR.drawOffer && orViewer === viewerId()) return;
   const before = OR && OR.id === game.id ? OR : null;
   OR = game;
+  orViewer = viewerId();
   orReceivedAt = Date.now();
   orFlagAsked = false;
   onlineBoard.clearSel();
@@ -68,9 +72,15 @@ $('btnOnlineLeave').addEventListener('click', () => {
   switchView('home');
 });
 
+/* Relecture périodique : la version affichée est renvoyée au serveur, qui répond « unchanged » si rien
+   n'a bougé. Elle ne vaut que pour la même partie et le même compte. */
 async function syncOnline() {
   if (!onlineId) return;
-  try { adoptOnline((await api('games', 'get', { id: onlineId })).game); } catch (e) { /* prochain passage */ }
+  const known = OR && OR.id === onlineId && orViewer === viewerId() ? OR.version : null;
+  try {
+    const res = await api('games', 'get', known ? { id: onlineId, known } : { id: onlineId });
+    if (!res.unchanged) adoptOnline(res.game);
+  } catch (e) { /* prochain passage */ }
   await syncGameChat();
 }
 
@@ -131,12 +141,14 @@ $('btnOnlinePgn').addEventListener('click', async () => {
 /* -------- Commentaires en direct sur la partie -------- */
 async function syncGameChat() {
   if (!onlineId) return;
-  let comments;
-  try { comments = (await api('game-comments', 'list', { gameId: onlineId })).comments; } catch (e) { return; }
-  const last = comments.length ? comments[comments.length - 1].id : null;
+  const gameId = onlineId;
+  let res;
+  try { res = await api('game-comments', 'list', lastChatId === null ? { gameId } : { gameId, known: lastChatId }); } catch (e) { return; }
+  if (res.unchanged || gameId !== onlineId) return;
+  const last = res.comments.length ? res.comments[res.comments.length - 1].id : 0;
   if (last === lastChatId) return;
   lastChatId = last;
-  renderChatLog($('gameChatLog'), chatEntries(comments));
+  renderChatLog($('gameChatLog'), chatEntries(res.comments));
 }
 $('gameChatSend').addEventListener('click', sendGameChat);
 $('gameChatInput').addEventListener('keydown', e => { if (e.key === 'Enter') sendGameChat(); });

@@ -58,6 +58,8 @@ final class GameViews
             },
             'createdAt' => Millis::of($game->createdAt()),
             'updatedAt' => Millis::of($game->updatedAt()),
+            // Jeton à renvoyer dans « known » à la relecture suivante : le serveur répond alors « unchanged » si rien n'a bougé.
+            'version' => GamePulse::of($game)->version(),
         ];
     }
 

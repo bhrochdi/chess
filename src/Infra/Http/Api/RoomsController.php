@@ -19,9 +19,14 @@ final class RoomsController
         return new ActionRouter([
             'list' => fn(JsonRequest $r): JsonResponse => JsonResponse::ok(['rooms' => $this->service->list()]),
             'listAll' => fn(JsonRequest $r): JsonResponse => JsonResponse::ok(['rooms' => $this->service->listAll()]),
-            'messages' => fn(JsonRequest $r): JsonResponse => JsonResponse::ok([
-                'messages' => $this->service->messages($r->string('roomId')),
-            ]),
+            'messages' => function (JsonRequest $r): JsonResponse {
+                $known = $r->optionalInt('known');
+                $messages = $known === null
+                    ? $this->service->messages($r->string('roomId'))
+                    : $this->service->messagesIfNew($r->string('roomId'), $known);
+
+                return $messages === null ? JsonResponse::unchanged() : JsonResponse::ok(['messages' => $messages]);
+            },
             'send' => fn(JsonRequest $r): JsonResponse => JsonResponse::ok([
                 'message' => $this->service->send($r->string('roomId'), $r->string('text')),
             ]),

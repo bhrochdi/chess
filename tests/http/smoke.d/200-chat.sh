@@ -11,6 +11,14 @@ expect_api 200 /api/games.php '{"action":"create","mode":"online","tc":null}' '"
 comment_game=$(grep -o '"id":"g[0-9a-f]\{12\}"' <<<"$body" | head -n1 | cut -d'"' -f4)
 expect_api 200 /api/game-comments.php "{\"action\":\"send\",\"gameId\":\"$comment_game\",\"text\":\"Joli coup\"}" '"text":"Joli coup"'
 expect_api 404 /api/game-comments.php '{"action":"send","gameId":"g0123456789ab","text":"Joli coup"}' 'Partie introuvable.'
+# Relecture : le dernier identifiant connu répond « unchanged », un identifiant périmé renvoie le fil.
+expect_api 200 /api/game-comments.php "{\"action\":\"list\",\"gameId\":\"$comment_game\"}" '"text":"Joli coup"'
+comment_last=$(grep -o '"id":[0-9][0-9]*' <<<"$body" | tail -n1 | cut -d: -f2)
+expect_api 200 /api/game-comments.php "{\"action\":\"list\",\"gameId\":\"$comment_game\",\"known\":$comment_last}" '{"ok":true,"unchanged":true}'
+expect_api 200 /api/game-comments.php "{\"action\":\"list\",\"gameId\":\"$comment_game\",\"known\":0}" '"text":"Joli coup"'
+expect_api 200 /api/rooms.php '{"action":"messages","roomId":"general"}' 'Bonjour du contrôle HTTP'
+room_last=$(grep -o '"id":[0-9][0-9]*' <<<"$body" | tail -n1 | cut -d: -f2)
+expect_api 200 /api/rooms.php "{\"action\":\"messages\",\"roomId\":\"general\",\"known\":$room_last}" '{"ok":true,"unchanged":true}'
 # Débit des messages : 8 par compte en 20 secondes, le suivant est refusé.
 new_session
 register_user

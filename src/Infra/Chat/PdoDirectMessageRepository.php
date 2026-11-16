@@ -22,6 +22,17 @@ final class PdoDirectMessageRepository implements DirectMessageRepository
         return new ChatMessage((int) $this->pdo->lastInsertId(), $senderId, $text, $at);
     }
 
+    public function lastId(string $userId, string $peerId): int
+    {
+        $stmt = $this->pdo->prepare(
+            'SELECT COALESCE(MAX(id), 0) FROM direct_messages
+             WHERE (sender_id = ? AND recipient_id = ?) OR (sender_id = ? AND recipient_id = ?)',
+        );
+        $stmt->execute([$userId, $peerId, $peerId, $userId]);
+
+        return (int) $stmt->fetchColumn();
+    }
+
     public function conversation(string $userId, string $peerId, int $limit): array
     {
         $stmt = $this->pdo->prepare(

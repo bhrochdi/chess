@@ -18,6 +18,7 @@ branchés par `api/games.php`.
 | `ChessRules` | Façade du domaine échecs : coups légaux, SAN, fin de partie. |
 | `ComputerPlayers`, `MinimaxComputerPlayers` | Adversaire ordinateur d'un niveau donné (le minimax de `src/Chess/Ai`). |
 | `GameRepository` | Port de stockage, implémenté par `Infra\Game\PdoGameRepository`. |
+| `GamePulse` | État léger d'une partie, lu sans ses coups (`GameRepository::pulse()`) : sa `version` et la chute éventuelle du drapeau. |
 | `ResultArchive` | Port : garde le résultat d'une partie en ligne purgée (`Infra\Game\PdoResultArchive`, table `archived_stats`). |
 | `GameViews`, `GameSummary` | JSON d'une partie et des listes ; un seul `Members::findMany()` par réponse. |
 | `PgnWriter` | Export PGN. |
@@ -63,7 +64,7 @@ répond 400 « Action inconnue. » ; un paramètre absent ou mal typé, 422
 |--------|------------|-------|---------|---------|
 | `create` | `mode`, `level` (ordinateur), `tc` (`{ base, inc }` en secondes ou `null`), `color` (en ligne : `w`, `b`, `random`) | compte | `{ game }` : `playing` (local, ordinateur) ou `open` (en ligne) | 403 ; 422 mode, niveau, couleur ou cadence ; 429 au-delà du débit de création |
 | `join` | `id` | compte | `{ game }` `playing` ; un joueur de la partie la reçoit telle quelle | 404 ; 409 « Cette partie a déjà commencé. » |
-| `get` | `id` | tous (local, ordinateur : propriétaire seulement) | `{ game }` | 404 « Partie introuvable. » |
+| `get` | `id`, `known?` (la `version` affichée) | tous (local, ordinateur : propriétaire seulement) | `{ game }` ; `{ unchanged: true }` si `known` est la version courante | 404 « Partie introuvable. » |
 | `move` | `id`, `uci`, `ply` (nombre de coups connus du client) | joueur au trait | `{ game }`, réponse de l'ordinateur comprise | 404 ; 403 ; 409 pas en cours, pas ton tour, « La partie a avancé : recharge-la. » ; 422 « Coup illégal. » |
 | `resign` | `id` | joueur en ligne | `{ game }` terminée, `abandon` | 404 ; 403 ; 409 |
 | `offerDraw` | `id` | joueur en ligne | `{ game }` avec `drawOffer` | 404 ; 403 ; 409 |
@@ -75,6 +76,16 @@ répond 400 « Action inconnue. » ; un paramètre absent ou mal typé, 422
 
 Une partie locale ou contre l'ordinateur n'existe que pour son propriétaire :
 tout autre visiteur reçoit 404.
+
+Relecture périodique : le front relit une partie en ligne toutes les 2,5 s en
+envoyant dans `known` la `version` qu'il affiche. `GameService::getIfChanged()`
+lit alors seulement le `GamePulse` (une ligne de `games` et le nombre de coups)
+et répond `unchanged` si la version est la même : la partie n'est ni rechargée
+ni rejouée. Deux cas forcent la lecture entière : une version différente, et un
+drapeau tombé depuis la dernière écriture, pour que la fin au temps soit
+enregistrée. La version réunit l'instant de dernière écriture, le nombre de
+coups, le statut et la proposition de nulle ; elle ne dépend pas du visiteur,
+donc le front ne la renvoie que pour le compte qui a reçu l'état affiché.
 
 Débit de création, par compte et par tranche de 10 minutes : 5 défis en ligne
 (429 « Tu as créé trop de défis. Patiente quelques minutes. ») et, comptées à
@@ -120,6 +131,7 @@ Champs de `game` :
 | `result`, `reason` | `1-0`, `0-1`, `1/2-1/2` ; `mat`, `pat`, `50coups`, `repetition`, `materiel`, `abandon`, `accord`, `temps`. |
 | `yourColor` | Ce que le visiteur peut jouer : `w`, `b`, `both` (local) ou `null`. |
 | `createdAt`, `updatedAt` | Instants en millisecondes. |
+| `version` | Jeton d'état, opaque pour le navigateur : il change à chaque écriture de la partie. À renvoyer dans `known` à la relecture suivante. |
 
 Les listes renvoient des résumés `{ id, mode, status, white, black, level, tc,
 result, reason, updatedAt }`.

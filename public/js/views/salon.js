@@ -5,6 +5,8 @@
 let salonRoomId = 'general';
 let salonLastId = null;      // dernier message affiché du salon actif
 let salonSeenId = null;      // dernier message vu dans la vue Salon (badge)
+let salonMessages = [];      // derniers messages reçus du salon actif
+let salonKnown = null;       // leur dernier identifiant, renvoyé au serveur : null avant la première réponse, 0 pour un salon vide
 
 function populateSalonSelector(rooms) {
   if (!rooms.some(r => r.id === salonRoomId)) salonRoomId = rooms.some(r => r.id === 'general') ? 'general' : (rooms[0] ? rooms[0].id : 'general');
@@ -22,11 +24,17 @@ function populateSalonSelector(rooms) {
 }
 
 async function refreshSalon() {
-  let messages;
   try {
     populateSalonSelector((await api('rooms', 'list')).rooms);
-    messages = (await api('rooms', 'messages', { roomId: salonRoomId })).messages;
+    const roomId = salonRoomId;
+    const res = await api('rooms', 'messages', salonKnown === null ? { roomId } : { roomId, known: salonKnown });
+    if (roomId !== salonRoomId) return;
+    if (!res.unchanged) {
+      salonMessages = res.messages;
+      salonKnown = salonMessages.length ? salonMessages[salonMessages.length - 1].id : 0;
+    }
   } catch (e) { return; }
+  const messages = salonMessages;
   const last = messages.length ? messages[messages.length - 1].id : null;
   if (last !== salonLastId) {
     salonLastId = last;
@@ -50,6 +58,8 @@ $('salonRoomSel').addEventListener('change', e => {
   salonRoomId = e.target.value;
   salonLastId = null;
   salonSeenId = null;
+  salonMessages = [];
+  salonKnown = null;
   $('salonLog').innerHTML = '';
   updateSalonBadge(0);
   refreshSalon();

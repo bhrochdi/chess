@@ -12,6 +12,9 @@ interface RoomMessageRepository
     /** @return list<ChatMessage> les $limit plus récents, du plus ancien au plus récent */
     public function latest(string $roomId, int $limit): array;
 
+    /** Identifiant du message le plus récent du salon, 0 s'il est vide. */
+    public function lastId(string $roomId): int;
+
     public function find(string $roomId, int $id): ?ChatMessage;
 
     public function delete(string $roomId, int $id): void;

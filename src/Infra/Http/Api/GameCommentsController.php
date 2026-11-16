@@ -17,9 +17,14 @@ final class GameCommentsController
     public function routes(): ActionRouter
     {
         return new ActionRouter([
-            'list' => fn(JsonRequest $r): JsonResponse => JsonResponse::ok([
-                'comments' => $this->service->list($r->string('gameId')),
-            ]),
+            'list' => function (JsonRequest $r): JsonResponse {
+                $known = $r->optionalInt('known');
+                $comments = $known === null
+                    ? $this->service->list($r->string('gameId'))
+                    : $this->service->listIfNew($r->string('gameId'), $known);
+
+                return $comments === null ? JsonResponse::unchanged() : JsonResponse::ok(['comments' => $comments]);
+            },
             'send' => fn(JsonRequest $r): JsonResponse => JsonResponse::ok([
                 'comment' => $this->service->send($r->string('gameId'), $r->string('text')),
             ]),

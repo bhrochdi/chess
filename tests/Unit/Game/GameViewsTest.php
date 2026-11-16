@@ -64,7 +64,7 @@ final class GameViewsTest extends TestCase
 
         self::assertSame(
             ['id', 'mode', 'status', 'level', 'white', 'black', 'tc', 'fen', 'turn', 'moves', 'lastMove', 'legalMoves',
-                'inCheck', 'captured', 'clock', 'drawOffer', 'result', 'reason', 'yourColor', 'createdAt', 'updatedAt'],
+                'inCheck', 'captured', 'clock', 'drawOffer', 'result', 'reason', 'yourColor', 'createdAt', 'updatedAt', 'version'],
             array_keys($view),
         );
         self::assertSame('g000000000001', $view['id']);

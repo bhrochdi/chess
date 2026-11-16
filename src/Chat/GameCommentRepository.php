@@ -11,4 +11,7 @@ interface GameCommentRepository
 
     /** @return list<ChatMessage> les $limit plus récents, du plus ancien au plus récent */
     public function latest(string $gameId, int $limit): array;
+
+    /** Identifiant du commentaire le plus récent de la partie, 0 s'il n'y en a aucun. */
+    public function lastId(string $gameId): int;
 }

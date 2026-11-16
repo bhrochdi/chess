@@ -31,6 +31,14 @@ final class PdoGameCommentRepository implements GameCommentRepository
         return array_values(array_reverse(array_map(self::hydrate(...), $stmt->fetchAll())));
     }
 
+    public function lastId(string $gameId): int
+    {
+        $stmt = $this->pdo->prepare('SELECT COALESCE(MAX(id), 0) FROM game_comments WHERE game_id = ?');
+        $stmt->execute([$gameId]);
+
+        return (int) $stmt->fetchColumn();
+    }
+
     /** @param array<array-key, mixed> $row */
     private static function hydrate(array $row): ChatMessage
     {

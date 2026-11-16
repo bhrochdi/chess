@@ -10,6 +10,7 @@ use LeCercle\Chess\Result;
 use LeCercle\Game\ChessRules;
 use LeCercle\Game\Game;
 use LeCercle\Game\GameMode;
+use LeCercle\Game\GamePulse;
 use LeCercle\Game\GameSnapshot;
 use LeCercle\Game\GameStatus;
 use LeCercle\Infra\Db\PdoFactory;
@@ -477,5 +478,46 @@ final class PdoGameRepositoryTest extends DatabaseTestCase
 
         self::assertSame(['g0000000000d5', 'g0000000000d4'], array_map(static fn($s): string => $s->id, $this->repo->all(10)));
         self::assertCount(1, $this->repo->all(1));
+    }
+
+    public function testPulseReadsTheLightStateWithoutTheMoves(): void
+    {
+        $game = $this->playedOnlineGame('g0000000000e1');
+        $game->offerDraw('alice', self::t0()->modify('+8 seconds'));
+        $this->repo->add($game);
+
+        $pulse = $this->repo->pulse('g0000000000e1');
+
+        self::assertSame(GamePulse::of($game)->version(), $pulse->version());
+        self::assertSame([GameMode::Online, 'alice', GameStatus::Playing, 4, Color::White], [
+            $pulse->mode,
+            $pulse->ownerId,
+            $pulse->status,
+            $pulse->plyCount,
+            $pulse->drawOffer,
+        ]);
+        self::assertNotNull($pulse->clock);
+        self::assertNotNull($game->clock());
+        self::assertSame(
+            [$game->clock()->whiteMs, $game->clock()->blackMs, $game->clock()->incrementMs, $game->clock()->running],
+            [$pulse->clock->whiteMs, $pulse->clock->blackMs, $pulse->clock->incrementMs, $pulse->clock->running],
+        );
+    }
+
+    public function testPulseOfAGameWithoutClockOrMoves(): void
+    {
+        $this->repo->add(Game::local('g0000000000e2', 'alice', null, self::t0()));
+
+        $pulse = $this->repo->pulse('g0000000000e2');
+
+        self::assertSame([GameMode::Local, 0, null, null], [$pulse->mode, $pulse->plyCount, $pulse->drawOffer, $pulse->clock]);
+        self::assertFalse($pulse->flagFallen(self::t0()->modify('+1 day')));
+    }
+
+    public function testPulseOfAnUnknownGameIsNotFound(): void
+    {
+        $this->expectException(NotFoundException::class);
+        $this->expectExceptionMessage('Partie introuvable.');
+        $this->repo->pulse('g999999999999');
     }
 }

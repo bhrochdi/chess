@@ -92,4 +92,30 @@ final class GameCommentsControllerTest extends TestCase
         return (new HttpKernel(new ExceptionMapper(fn() => null)))
             ->handle('POST', $json, fn() => (new GameCommentsController($service))->routes());
     }
+
+    public function testListWithTheKnownLastIdAnswersUnchanged(): void
+    {
+        self::assertSame(
+            '{"ok":true,"unchanged":true}',
+            $this->respond('{"action":"list","gameId":"' . self::GAME . '","known":0}', null)->json,
+        );
+
+        [, $sent] = $this->call('{"action":"send","gameId":"' . self::GAME . '","text":"Joli"}', self::ALICE);
+        $id = $sent['comment']['id'];
+
+        [, $body] = $this->call('{"action":"list","gameId":"' . self::GAME . '","known":0}');
+        self::assertSame(['Joli'], array_column($body['comments'], 'text'));
+        self::assertSame(
+            '{"ok":true,"unchanged":true}',
+            $this->respond('{"action":"list","gameId":"' . self::GAME . '","known":' . $id . '}', null)->json,
+        );
+    }
+
+    public function testListKnownMustBeAnInteger(): void
+    {
+        [$status, $body] = $this->call('{"action":"list","gameId":"' . self::GAME . '","known":"12"}');
+
+        self::assertSame(422, $status);
+        self::assertSame('Paramètre « known » manquant ou invalide.', $body['error']);
+    }
 }

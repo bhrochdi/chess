@@ -32,4 +32,17 @@ final class InMemoryGameCommentRepositoryTest extends TestCase
         self::assertSame([], $repo->latest('gc', 3));
         self::assertSame([], $repo->latest('ga', 0));
     }
+
+    public function testLastIdIsTheNewestOfTheGameOrZero(): void
+    {
+        $repo = new InMemoryGameCommentRepository();
+        $at = new \DateTimeImmutable('2026-11-12 10:00:00');
+        self::assertSame(0, $repo->lastId('ga'));
+
+        $repo->add('ga', 'u1', 'un', $at);
+        $other = $repo->add('gb', 'u1', 'ailleurs', $at);
+        $last = $repo->add('ga', 'u1', 'deux', $at);
+
+        self::assertSame([$last->id, $other->id], [$repo->lastId('ga'), $repo->lastId('gb')]);
+    }
 }

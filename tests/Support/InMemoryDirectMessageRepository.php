@@ -38,6 +38,13 @@ final class InMemoryDirectMessageRepository implements DirectMessageRepository
         return $limit <= 0 ? [] : \array_slice($messages, -$limit);
     }
 
+    public function lastId(string $userId, string $peerId): int
+    {
+        $last = $this->conversation($userId, $peerId, 1);
+
+        return $last === [] ? 0 : $last[0]->id;
+    }
+
     public function threads(string $userId, int $limit): array
     {
         return \array_slice($this->allThreads($userId), 0, max(0, $limit));

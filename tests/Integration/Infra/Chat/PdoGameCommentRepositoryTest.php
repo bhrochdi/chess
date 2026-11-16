@@ -25,4 +25,17 @@ final class PdoGameCommentRepositoryTest extends DatabaseTestCase
         self::assertSame(['merci'], $last);
         self::assertSame([], $repo->latest('g3', 50));
     }
+
+    public function testLastIdIsTheNewestOfTheGameOrZero(): void
+    {
+        $repo = new PdoGameCommentRepository(self::pdo());
+        $at = new \DateTimeImmutable('2026-11-12 10:00:00.456', new \DateTimeZone('UTC'));
+        self::assertSame(0, $repo->lastId('g0000000000a1'));
+
+        $repo->add('g0000000000a1', 'u1', 'un', $at);
+        $other = $repo->add('g0000000000a2', 'u1', 'ailleurs', $at);
+        $last = $repo->add('g0000000000a1', 'u1', 'deux', $at);
+
+        self::assertSame([$last->id, $other->id], [$repo->lastId('g0000000000a1'), $repo->lastId('g0000000000a2')]);
+    }
 }

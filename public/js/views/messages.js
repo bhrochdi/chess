@@ -3,7 +3,7 @@
    MESSAGERIE PRIVÉE (api/direct-messages.php)
 ============================================================ */
 let dmPeer = null;           // { id, pseudo }
-let dmLastId = null;
+let dmLastId = null;         // dernier message affiché : null avant la première réponse, 0 pour une conversation vide
 
 async function refreshThreads() {
   if (!currentUser) return;
@@ -40,12 +40,14 @@ async function openThread(peerPseudo) {
 
 async function refreshDm() {
   if (!dmPeer || !currentUser) return;
-  let messages;
-  try { messages = (await api('direct-messages', 'conversation', { peerId: dmPeer.id })).messages; } catch (e) { return; }
-  const last = messages.length ? messages[messages.length - 1].id : null;
+  const peerId = dmPeer.id;
+  let res;
+  try { res = await api('direct-messages', 'conversation', dmLastId === null ? { peerId } : { peerId, known: dmLastId }); } catch (e) { return; }
+  if (res.unchanged || !dmPeer || dmPeer.id !== peerId) return;
+  const last = res.messages.length ? res.messages[res.messages.length - 1].id : 0;
   if (last === dmLastId) return;
   dmLastId = last;
-  renderChatLog($('dmLog'), chatEntries(messages));
+  renderChatLog($('dmLog'), chatEntries(res.messages));
 }
 setInterval(() => { if (!document.hidden && currentView === 'dm' && dmPeer) refreshDm(); }, 3000);
 

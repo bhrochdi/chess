@@ -60,4 +60,18 @@ final class InMemoryDirectMessageRepositoryTest extends TestCase
         $repo->markRead('a', 'b', 3);
         self::assertSame(0, $repo->unreadTotal('a'));
     }
+
+    public function testLastIdIsTheNewestBetweenTheTwoUsersOrZero(): void
+    {
+        $repo = new InMemoryDirectMessageRepository();
+        $at = new \DateTimeImmutable('2026-11-12 10:00:00');
+        self::assertSame(0, $repo->lastId('alice', 'bob'));
+
+        $repo->add('alice', 'bob', 'un', $at);
+        $last = $repo->add('bob', 'alice', 'deux', $at);
+        $repo->add('carol', 'alice', 'ailleurs', $at);
+
+        self::assertSame([$last->id, $last->id], [$repo->lastId('alice', 'bob'), $repo->lastId('bob', 'alice')]);
+        self::assertSame(0, $repo->lastId('bob', 'carol'));
+    }
 }

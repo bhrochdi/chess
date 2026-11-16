@@ -73,6 +73,23 @@ final class DirectMessageService
         return $this->views->list($messages);
     }
 
+    /**
+     * Relecture périodique : $known est l'identifiant du dernier message que le navigateur affiche
+     * (0 pour une conversation vide). Répond null si c'est toujours le dernier : il a déjà été marqué lu.
+     *
+     * @return list<array<string, mixed>>|null
+     */
+    public function conversationIfNew(string $peerId, int $known): ?array
+    {
+        $me = $this->access->member();
+        $this->assertNotSelf($me->id, $this->peer($peerId)->id);
+        if ($this->messages->lastId($me->id, $peerId) === $known) {
+            return null;
+        }
+
+        return $this->conversation($peerId);
+    }
+
     /** @return array<string, mixed> */
     public function send(string $peerId, string $text): array
     {

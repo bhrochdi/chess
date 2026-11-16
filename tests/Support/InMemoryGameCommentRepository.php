@@ -26,4 +26,11 @@ final class InMemoryGameCommentRepository implements GameCommentRepository
     {
         return $limit <= 0 ? [] : \array_slice($this->byGame[$gameId] ?? [], -$limit);
     }
+
+    public function lastId(string $gameId): int
+    {
+        $comments = $this->byGame[$gameId] ?? [];
+
+        return $comments === [] ? 0 : $comments[\count($comments) - 1]->id;
+    }
 }
