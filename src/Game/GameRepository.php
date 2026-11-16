@@ -58,6 +58,13 @@ interface GameRepository
     public function lobby(\DateTimeImmutable $finishedSince, int $limit): array;
 
     /**
+     * Parties en ligne terminées dont $userId est un des joueurs, les plus récentes d'abord ; $offset en saute autant.
+     *
+     * @return list<GameSummary>
+     */
+    public function finishedOf(string $userId, int $limit, int $offset): array;
+
+    /**
      * Parties non terminées dont $userId est propriétaire ou joueur ; les plus récentes d'abord.
      *
      * @return list<GameSummary>

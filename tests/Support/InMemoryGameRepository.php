@@ -110,6 +110,16 @@ final class InMemoryGameRepository implements GameRepository
         );
     }
 
+    public function finishedOf(string $userId, int $limit, int $offset): array
+    {
+        return $this->summaries(
+            static fn(GameSnapshot $s): bool => $s->mode === GameMode::Online && $s->status === GameStatus::Finished
+                && \in_array($userId, [$s->whiteId, $s->blackId], true),
+            $limit,
+            $offset,
+        );
+    }
+
     public function unfinishedOf(string $userId, int $limit): array
     {
         return $this->summaries(
@@ -126,14 +136,14 @@ final class InMemoryGameRepository implements GameRepository
      *
      * @return list<GameSummary>
      */
-    private function summaries(\Closure $keep, int $limit): array
+    private function summaries(\Closure $keep, int $limit, int $offset = 0): array
     {
         $kept = array_values(array_filter($this->snapshots, $keep));
         usort($kept, static fn(GameSnapshot $a, GameSnapshot $b): int => [$b->updatedAt, $a->id] <=> [$a->updatedAt, $b->id]);
 
         return array_map(
             fn(GameSnapshot $s): GameSummary => GameSummary::of(Game::restore($s, $this->rules)),
-            \array_slice($kept, 0, $limit),
+            \array_slice($kept, max(0, $offset), max(0, $limit)),
         );
     }
 }

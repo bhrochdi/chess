@@ -84,8 +84,14 @@ en cours — à regarder ».
 d'apprentissage. La lecture est publique ; seules les écritures demandent un
 compte.
 
+Une partie terminée se revoit coup par coup (⏮ ◀ ▶ ⏭, flèches du clavier ou
+clic sur un coup de la feuille). Un joueur connecté retrouve ses parties en
+ligne terminées dans « Mes parties terminées », sur l'accueil.
+
 **Garanties du serveur :** le spectateur reçoit le même état que les joueurs,
-sans coups légaux à jouer (`yourColor` vide) : il ne peut pas jouer.
+sans coups légaux à jouer (`yourColor` vide) : il ne peut pas jouer. Les
+positions de la relecture sont calculées par le serveur ; l'historique ne
+montre à chacun que ses propres parties.
 
 **Détail :** [Parties](parties.md).
 

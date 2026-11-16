@@ -103,6 +103,14 @@
         <div class="list" id="liveGames" data-empty="Aucune partie en cours."></div>
       </div>
     </div>
+
+    <div class="card" id="historyCard" hidden>
+      <h2>Mes parties terminées</h2>
+      <div class="list history" id="historyList" data-empty="Aucune partie en ligne terminée pour le moment."></div>
+      <div class="toolbar" style="margin-top:10px">
+        <button type="button" id="historyMore" hidden>Parties plus anciennes</button>
+      </div>
+    </div>
   </div>
 </div>
 
@@ -206,6 +214,13 @@
       <div class="scoresheet">
         <h2>Feuille de partie</h2>
         <div class="movelist" id="onlineMoves"></div>
+        <div class="replaybar" id="replayBar" hidden>
+          <button type="button" id="replayFirst" title="Position de départ" aria-label="Position de départ">⏮</button>
+          <button type="button" id="replayPrev" title="Coup précédent (←)" aria-label="Coup précédent">◀</button>
+          <span class="small" id="replayPos" aria-live="polite"></span>
+          <button type="button" id="replayNext" title="Coup suivant (→)" aria-label="Coup suivant">▶</button>
+          <button type="button" id="replayLast" title="Position finale" aria-label="Position finale">⏭</button>
+        </div>
       </div>
       <div class="card chatbox" style="min-height:240px">
         <h2>💬 Commentaires en direct</h2>

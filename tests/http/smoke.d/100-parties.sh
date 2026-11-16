@@ -13,6 +13,10 @@ expect_api 200 /api/games.php "{\"action\":\"get\",\"id\":\"$game_id\"}" '"versi
 game_version=$(grep -o '"version":"[^"]*"' <<<"$body" | head -n1 | cut -d'"' -f4)
 expect_api 200 /api/games.php "{\"action\":\"get\",\"id\":\"$game_id\",\"known\":\"$game_version\"}" '{"ok":true,"unchanged":true}'
 expect_api 200 /api/games.php "{\"action\":\"get\",\"id\":\"$game_id\",\"known\":\"perimee\"}" '"moves":["e4","'
+# Relecture coup par coup et historique (une partie contre l'ordinateur n'y figure pas).
+expect_api 200 /api/games.php "{\"action\":\"replay\",\"id\":\"$game_id\"}" '"frames":[{"fen":"rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1"'
+expect_api 200 /api/games.php '{"action":"history"}' '"games":[],"more":false'
+expect_api 422 /api/games.php '{"action":"history","offset":-1}' 'Page d’historique invalide.'
 expect_api 404 /api/games.php '{"action":"get","id":"g000000000000"}' 'Partie introuvable.'
 # Débit des défis : 5 par compte en 10 minutes, le suivant est refusé.
 new_session

@@ -67,6 +67,7 @@ function finishLogin(user) {
   heartbeat();
   refreshThreads();
   refreshLobby();
+  refreshHistory();
   if (currentView === 'local') { LG = null; enterLocal(); }
 }
 
@@ -105,6 +106,7 @@ $('btnLogout').addEventListener('click', async () => {
   renderLocal();
   refreshProfileUI();
   refreshLobby();
+  refreshHistory();
 });
 
 /* -------- Session (reconnexion automatique) -------- */

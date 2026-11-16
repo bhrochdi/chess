@@ -16,8 +16,16 @@ const viewerId = () => (currentUser ? currentUser.id : null);
 const isMyTurn = () => !!OR && OR.status === 'playing' && OR.legalMoves.length > 0;
 const playerNames = () => ({ w: OR.white ? OR.white.pseudo : '— attente —', b: OR.black ? OR.black.pseudo : '— attente —' });
 
+/* Relecture d'une partie terminée : positions reçues du serveur (api games/replay) et demi-coup affiché. */
+let replayFrames = null;    // { id, frames } de la partie affichée, null tant qu'elles ne sont pas chargées
+let replayPly = 0;
+let replayLoading = null;   // identifiant de la partie dont les positions sont en cours de chargement
+
+const replaying = () => !!OR && OR.status === 'finished' && !!replayFrames && replayFrames.id === OR.id;
+const shownGame = () => (replaying() ? replayGame(OR, replayFrames.frames, replayPly) : OR);
+
 const onlineBoard = ServerBoard($('onlineBoard'), {
-  getGame: () => OR,
+  getGame: shownGame,
   flipped: () => !!OR && OR.yourColor === 'b',
   canMove: () => !onlineBusy && isMyTurn(),
   onMove: uci => onlineRequest('move', { uci, ply: OR.moves.length })
@@ -54,6 +62,7 @@ async function onlineRequest(action, payload = {}) {
 function enterOnlineGame(id) {
   onlineId = id;
   OR = null;
+  replayFrames = null;
   lastChatId = null;
   $('gameChatLog').innerHTML = '';
   switchView('online');
@@ -86,10 +95,13 @@ async function syncOnline() {
 
 function renderOnline() {
   if (!OR) return;
+  if (OR.status === 'finished' && !replaying()) loadReplay(OR.id);
+  const shown = shownGame();
   onlineBoard.render();
-  renderServerSide($('view-online'), OR);
-  renderServerMoves($('onlineMoves'), OR);
-  renderServerClocks($('onlineClocks'), OR, playerNames(), orReceivedAt);
+  renderServerSide($('view-online'), shown);
+  renderServerMoves($('onlineMoves'), shown, replaying() ? n => goReplay(n) : null);
+  renderServerClocks($('onlineClocks'), shown, playerNames(), orReceivedAt);
+  renderReplayBar();
   const names = playerNames();
   const tcTxt = OR.tc ? (OR.tc.base / 60) + ' min' + (OR.tc.inc ? ' + ' + OR.tc.inc + ' s' : '') : 'sans pendule';
   $('onlineTitle').textContent = names.w + ' vs ' + names.b + ' — ' + tcTxt;
@@ -117,6 +129,51 @@ function renderOnline() {
   $('btnResign').disabled = !isPlayer || OR.status !== 'playing';
   $('btnDraw').disabled = !isPlayer || OR.status !== 'playing' || OR.drawOffer === OR.yourColor;
 }
+
+/* -------- Relecture coup par coup -------- */
+async function loadReplay(id) {
+  if (replayLoading === id) return;
+  replayLoading = id;
+  try {
+    const { replay } = await api('games', 'replay', { id });
+    if (!OR || OR.id !== id) return;
+    replayFrames = replay;
+    replayPly = replay.frames.length - 1;   // on arrive sur la position finale
+    renderOnline();
+  } catch (e) { /* la feuille de partie reste lisible ; nouvel essai au prochain affichage */ }
+  finally { if (replayLoading === id) replayLoading = null; }
+}
+
+function goReplay(ply) {
+  if (!replaying()) return;
+  replayPly = Math.max(0, Math.min(ply, replayFrames.frames.length - 1));
+  onlineBoard.clearSel();
+  renderOnline();
+}
+
+function renderReplayBar() {
+  const on = replaying();
+  $('replayBar').hidden = !on;
+  if (!on) return;
+  const last = replayFrames.frames.length - 1;
+  $('replayPos').textContent = replayPly === 0 ? 'Position de départ' : 'Coup ' + Math.ceil(replayPly / 2) + (replayPly % 2 ? ' (Blancs)' : ' (Noirs)') + ' · ' + replayPly + '/' + last;
+  $('replayFirst').disabled = $('replayPrev').disabled = replayPly === 0;
+  $('replayNext').disabled = $('replayLast').disabled = replayPly === last;
+}
+
+$('replayFirst').addEventListener('click', () => goReplay(0));
+$('replayPrev').addEventListener('click', () => goReplay(replayPly - 1));
+$('replayNext').addEventListener('click', () => goReplay(replayPly + 1));
+$('replayLast').addEventListener('click', () => replaying() && goReplay(replayFrames.frames.length - 1));
+/* Flèches du clavier, hors saisie de texte. */
+document.addEventListener('keydown', e => {
+  if (currentView !== 'online' || !replaying() || e.altKey || e.ctrlKey || e.metaKey) return;
+  if (/^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement && document.activeElement.tagName)) return;
+  const step = { ArrowLeft: -1, ArrowRight: 1, Home: -Infinity, End: Infinity }[e.key];
+  if (step === undefined) return;
+  e.preventDefault();
+  goReplay(step === -Infinity ? 0 : step === Infinity ? replayFrames.frames.length - 1 : replayPly + step);
+});
 
 /* Pendule : affichage ; à zéro, une relecture fait constater la chute par le serveur. */
 setInterval(async () => {

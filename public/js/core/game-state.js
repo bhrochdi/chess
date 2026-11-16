@@ -15,6 +15,35 @@ function newer(a, b) {
   return a.moves.length > b.moves.length || a.status !== b.status;
 }
 
+/* Relecture : la partie telle qu'elle était après le demi-coup ply (0 = position de départ), à partir des
+   positions calculées par le serveur. Seule la feuille de partie garde tous les coups ; aucun coup n'est jouable. */
+function replayGame(game, frames, ply) {
+  const i = Math.max(0, Math.min(ply, frames.length - 1));
+  const f = frames[i];
+  return Object.assign({}, game, {
+    fen: f.fen,
+    inCheck: f.inCheck,
+    lastMove: f.lastMove,
+    captured: f.captured,
+    clock: f.clock ? { whiteMs: f.clock.whiteMs, blackMs: f.clock.blackMs, running: null } : null,
+    legalMoves: [],
+    replayPly: i
+  });
+}
+
+/* Ligne de l'historique vue par le joueur meId : victoire, défaite ou nulle, et comment. */
+const REASON_SHORT = {
+  mat: 'mat', pat: 'pat', '50coups': 'règle des 50 coups', repetition: 'triple répétition', materiel: 'matériel insuffisant',
+  accord: 'accord mutuel', abandon: 'abandon', temps: 'au temps', admin: 'décision administrative'
+};
+function historyOutcome(game, meId) {
+  const reason = REASON_SHORT[game.reason] || '';
+  if (game.result === '1/2-1/2') return { label: 'Nulle', tone: 'draw', reason };
+  const myColor = game.white && game.white.id === meId ? 'w' : 'b';
+  const won = (game.result === '1-0') === (myColor === 'w');
+  return { label: won ? 'Victoire' : 'Défaite', tone: won ? 'win' : 'loss', reason };
+}
+
 function uciOf(from, to, promo) {
   const sq = p => FILES[p.c] + (8 - p.r);
   return sq(from) + sq(to) + (promo ? promo.toLowerCase() : '');

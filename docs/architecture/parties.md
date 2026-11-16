@@ -18,6 +18,7 @@ branchés par `api/games.php`.
 | `ChessRules` | Façade du domaine échecs : coups légaux, SAN, fin de partie. |
 | `ComputerPlayers`, `MinimaxComputerPlayers` | Adversaire ordinateur d'un niveau donné (le minimax de `src/Chess/Ai`). |
 | `GameRepository` | Port de stockage, implémenté par `Infra\Game\PdoGameRepository`. |
+| `GameFrame` | État après un demi-coup donné (FEN, échec, dernier coup, prises, temps), pour la relecture ; `Game::frames()` les calcule sur une copie de la partie. |
 | `GamePulse` | État léger d'une partie, lu sans ses coups (`GameRepository::pulse()`) : sa `version` et la chute éventuelle du drapeau. |
 | `ResultArchive` | Port : garde le résultat d'une partie en ligne purgée (`Infra\Game\PdoResultArchive`, table `archived_stats`). |
 | `GameViews`, `GameSummary` | JSON d'une partie et des listes ; un seul `Members::findMany()` par réponse. |
@@ -69,6 +70,8 @@ répond 400 « Action inconnue. » ; un paramètre absent ou mal typé, 422
 | `resign` | `id` | joueur en ligne | `{ game }` terminée, `abandon` | 404 ; 403 ; 409 |
 | `offerDraw` | `id` | joueur en ligne | `{ game }` avec `drawOffer` | 404 ; 403 ; 409 |
 | `acceptDraw` | `id` | joueur en ligne face à une offre | `{ game }` terminée `1/2-1/2`, `accord` | 404 ; 403 ; 409 |
+| `history` | `offset?` (0 par défaut, 0 à 10 000) | compte | `{ games, more }` : parties en ligne terminées du visiteur (tournois compris), 20 par page, les plus récentes d'abord ; `more` dit s'il en reste | 403 ; 422 « Page d’historique invalide. » |
+| `replay` | `id` | comme `get` | `{ replay: { id, frames } }` : une entrée par demi-coup, la position de départ en tête | 404 |
 | `undo` | `id` | propriétaire (local, ordinateur) | `{ game }` un demi-coup en arrière (ordinateur : jusqu'au trait du propriétaire), même après la fin | 404 ; 409 |
 | `list` | | tous | `{ games }` : parties en ligne ouvertes ou en cours, et terminées depuis 2 h ; 30 au plus, les plus récentes d'abord | |
 | `mine` | | compte | `{ games }` : parties non terminées du visiteur, 10 au plus | 403 |
@@ -76,6 +79,18 @@ répond 400 « Action inconnue. » ; un paramètre absent ou mal typé, 422
 
 Une partie locale ou contre l'ordinateur n'existe que pour son propriétaire :
 tout autre visiteur reçoit 404.
+
+Historique et relecture : `history` liste les parties en ligne terminées du
+compte connecté, les parties de tournoi comprises (les parties locales et
+contre l'ordinateur n'y figurent pas). Le service en demande une de plus que
+la page pour savoir s'il en reste, sans requête de comptage. `replay` renvoie
+une entrée par demi-coup, `frames[0]` étant la position de départ :
+`{ fen, inCheck, lastMove, captured, clock }`, avec `clock` à
+`{ whiteMs, blackMs }` (temps restants après le coup) ou `null` sans cadence.
+Les positions sont calculées par le serveur en rejouant les coups stockés :
+le navigateur n'applique aucune règle, même pour revenir en arrière. La
+relecture d'une partie en cours est permise (mêmes droits que `get`), mais
+le front ne la propose que pour une partie terminée.
 
 Relecture périodique : le front relit une partie en ligne toutes les 2,5 s en
 envoyant dans `known` la `version` qu'il affiche. `GameService::getIfChanged()`

@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace LeCercle\Tests\Unit\Support;
 
 use LeCercle\Chess\Color;
+use LeCercle\Chess\Result;
 use LeCercle\Game\ChessRules;
 use LeCercle\Game\Game;
 use LeCercle\Game\GamePulse;
@@ -183,5 +184,26 @@ final class InMemoryGameRepositoryTest extends TestCase
         $this->expectException(NotFoundException::class);
         $this->expectExceptionMessage('Partie introuvable.');
         $this->games->pulse('g999999999999');
+    }
+
+    public function testFinishedOfKeepsFinishedOnlineGamesOfThePlayerWithOffset(): void
+    {
+        $older = $this->online(0)->id();
+        $newer = $this->online(1)->id();
+        foreach ([$older => 2, $newer => 3] as $id => $minutes) {
+            $game = $this->games->getForUpdate($id);
+            $game->closeByAdmin(Result::Draw, $this->at($minutes));
+            $this->games->save($game);
+        }
+        $this->online(4);
+        $local = Game::local($this->games->nextId(), self::ALICE, null, $this->at(5));
+        $local->closeByAdmin(Result::Draw, $this->at(5));
+        $this->games->add($local);
+
+        $ids = static fn(array $summaries): array => array_map(static fn($s): string => $s->id, $summaries);
+
+        self::assertSame([$newer, $older], $ids($this->games->finishedOf(self::ALICE, 10, 0)));
+        self::assertSame([$older], $ids($this->games->finishedOf(self::ALICE, 10, 1)));
+        self::assertSame([], $ids($this->games->finishedOf(self::BOB, 10, 0)));
     }
 }

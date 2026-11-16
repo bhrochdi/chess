@@ -188,4 +188,28 @@ final class GamesControllerTest extends TestCase
         self::assertSame(422, $status);
         self::assertSame('Paramètre « known » manquant ou invalide.', $body['error']);
     }
+
+    public function testHistoryAnswersWithGamesAndMore(): void
+    {
+        [$status, $body] = $this->call('{"action":"history"}', self::ALICE);
+
+        self::assertSame(200, $status);
+        self::assertSame(['ok' => true, 'games' => [], 'more' => false], $body);
+        self::assertSame(422, $this->call('{"action":"history","offset":"20"}', self::ALICE)[0]);
+        self::assertSame(403, $this->call('{"action":"history"}', null)[0]);
+    }
+
+    public function testReplayAnswersWithTheFrames(): void
+    {
+        $id = $this->call('{"action":"create","mode":"local"}', self::ALICE)[1]['game']['id'];
+        $this->call('{"action":"move","id":"' . $id . '","uci":"e2e4","ply":0}', self::ALICE);
+
+        [$status, $body] = $this->call('{"action":"replay","id":"' . $id . '"}', self::ALICE);
+
+        self::assertSame(200, $status);
+        self::assertSame(['ok', 'replay'], array_keys($body));
+        self::assertSame($id, $body['replay']['id']);
+        self::assertCount(2, $body['replay']['frames']);
+        self::assertSame(404, $this->call('{"action":"replay","id":"' . $id . '"}', self::BOB)[0]);
+    }
 }

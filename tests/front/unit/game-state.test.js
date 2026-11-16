@@ -34,3 +34,34 @@ test('textes de fin', () => {
   assertEqual(endText(g('materiel', '1/2-1/2')).detail, 'Matériel insuffisant pour mater.');
   assertEqual(endText(g('admin', '1/2-1/2')), { title: 'Partie close', detail: 'Clôturée par l’administration.' });
 });
+
+const frames = [
+  { fen: 'start w', inCheck: false, lastMove: null, captured: { w: [], b: [] }, clock: { whiteMs: 300000, blackMs: 300000 } },
+  { fen: 'after-e4 b', inCheck: false, lastMove: { from: 'e2', to: 'e4' }, captured: { w: [], b: [] }, clock: { whiteMs: 298000, blackMs: 300000 } },
+  { fen: 'after-qh4 w', inCheck: true, lastMove: { from: 'd8', to: 'h4' }, captured: { w: [], b: ['P'] }, clock: null }
+];
+const live = { id: 'g1', status: 'finished', moves: ['e4', 'Qh4'], fen: 'live', legalMoves: ['e2e4'], clock: { whiteMs: 1, blackMs: 2, running: 'w' } };
+
+test('relecture : position, dernier coup, prises et pendule du demi-coup demandé', () => {
+  const g = replayGame(live, frames, 1);
+  assertEqual([g.fen, g.lastMove, g.replayPly], ['after-e4 b', { from: 'e2', to: 'e4' }, 1]);
+  assertEqual(g.clock, { whiteMs: 298000, blackMs: 300000, running: null }, 'pendule arrêtée');
+  assertEqual(g.legalMoves, [], 'aucun coup jouable');
+  assertEqual(g.moves, ['e4', 'Qh4'], 'feuille de partie complète');
+  assertEqual(live.fen, 'live', 'la partie reçue ne change pas');
+});
+
+test('relecture : bornes, échec et partie sans pendule', () => {
+  assertEqual(replayGame(live, frames, -3).replayPly, 0);
+  const last = replayGame(live, frames, 99);
+  assertEqual([last.replayPly, last.inCheck, last.clock, last.captured.b], [2, true, null, ['P']]);
+});
+
+test('historique vu par le joueur', () => {
+  const g = (result, reason) => ({ result, reason, white: { id: 'ua' }, black: { id: 'ub' } });
+  assertEqual(historyOutcome(g('1-0', 'mat'), 'ua'), { label: 'Victoire', tone: 'win', reason: 'mat' });
+  assertEqual(historyOutcome(g('1-0', 'abandon'), 'ub'), { label: 'Défaite', tone: 'loss', reason: 'abandon' });
+  assertEqual(historyOutcome(g('0-1', 'temps'), 'ub').label, 'Victoire');
+  assertEqual(historyOutcome(g('1/2-1/2', 'repetition'), 'ua'), { label: 'Nulle', tone: 'draw', reason: 'triple répétition' });
+  assertEqual(historyOutcome(g('0-1', 'inconnu'), 'ua').reason, '');
+});

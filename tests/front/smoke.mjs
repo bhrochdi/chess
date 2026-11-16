@@ -195,8 +195,31 @@ async function duel() {
   await A.text('#onlineStatus', 'Partie nulle');
   await B.text('#onlineStatus', 'Partie nulle');
 
-  S('messages privés');
+  S('relecture');
   for (const p of [pageA, pageB]) { await p.waitForSelector('#endOverlay.show', { timeout: T }); await p.click('#endClose'); }
+  const square = (p, i) => p.locator('#onlineBoard .sq').nth(i).textContent();
+  await pageA.waitForSelector('#replayBar:not([hidden])', { timeout: T });
+  await A.text('#replayPos', '2/2');
+  await A.click('#replayFirst');
+  await A.text('#replayPos', 'Position de départ');
+  if ((await square(pageA, 52)) !== '♙' || (await square(pageA, 36)) !== '') throw new Error('position de départ attendue en relecture');
+  await A.click('#replayNext');
+  await A.text('#replayPos', '1/2');
+  if ((await square(pageA, 36)) !== '♙') throw new Error('e4 attendu après le premier coup');
+  await pageA.locator('#onlineMoves .ply.pick').nth(1).click();
+  await A.text('#replayPos', '2/2');
+  await pageA.keyboard.press('ArrowLeft');
+  await A.text('#replayPos', '1/2');
+
+  S('historique');
+  await pageB.click('nav button[data-view=home]');
+  await B.text('#historyList', 'DuelBlanc');
+  await B.text('#historyList', 'Nulle');
+  await pageB.locator('#historyList button', { hasText: 'Revoir' }).first().click();
+  await pageB.waitForSelector('#replayBar:not([hidden])', { timeout: T });
+  await B.text('#replayPos', '2/2');
+
+  S('messages privés');
   await pageA.click('nav button[data-view=dm]');
   await pageA.fill('#dmNewPeer', 'DuelNoir');
   await A.click('#dmNewBtn');

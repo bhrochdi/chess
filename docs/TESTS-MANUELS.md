@@ -114,12 +114,22 @@ tel quel. Aucune réponse 500.
 9. Après quelques parties terminées, ouvrir **Mon profil**.
    - Attendu : victoires, défaites et nulles comptent les parties en ligne
      terminées seulement (pas les parties locales ni contre l'ordinateur).
-10. Pendant une partie en ligne, ouvrir l'onglet **Réseau** des outils du
+10. Partie terminée : utiliser ⏮ ◀ ▶ ⏭, les flèches ← → du clavier, puis
+    cliquer sur un coup de la feuille de partie.
+    - Attendu : l'échiquier, les pièces prises et les pendules montrent la
+      position après le coup choisi ; « Coup n (Blancs/Noirs) · k/N » suit.
+11. **Accueil** → **Mes parties terminées** (connecté) : une ligne par partie
+    en ligne terminée, la plus récente en haut ; **↺ Revoir** ouvre la
+    relecture. Au-delà de 20 parties, **Parties plus anciennes** ajoute la
+    page suivante.
+    - Attendu : Victoire, Défaite ou Nulle vu du joueur connecté ; la carte
+      n'apparaît pas sans connexion.
+12. Pendant une partie en ligne, ouvrir l'onglet **Réseau** des outils du
     navigateur et attendre sans jouer.
     - Attendu : les relectures de `games.php` et `game-comments.php` répondent
       `{"ok":true,"unchanged":true}` ; dès qu'un coup est joué ou un
       commentaire envoyé, la réponse suivante est entière et l'affichage suit.
-11. Se connecter ou se déconnecter en regardant une partie.
+13. Se connecter ou se déconnecter en regardant une partie.
     - Attendu : le « mode spectateur » ou la couleur jouée se met à jour à la
       relecture suivante, sans attendre un coup.
 

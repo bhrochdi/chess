@@ -39,6 +39,8 @@ final class GamesController
             'undo' => fn(JsonRequest $r): JsonResponse => $this->game($this->games->undo($r->string('id'))),
             'list' => fn(): JsonResponse => JsonResponse::ok(['games' => $this->games->lobby()]),
             'mine' => fn(): JsonResponse => JsonResponse::ok(['games' => $this->games->mine()]),
+            'history' => fn(JsonRequest $r): JsonResponse => JsonResponse::ok($this->games->history($r->optionalInt('offset') ?? 0)),
+            'replay' => fn(JsonRequest $r): JsonResponse => JsonResponse::ok(['replay' => $this->games->replay($r->string('id'))]),
             'pgn' => fn(JsonRequest $r): JsonResponse => JsonResponse::ok($this->games->pgn($r->string('id'))),
             'adminList' => fn(): JsonResponse => JsonResponse::ok(['games' => $this->games->adminList()]),
             'adminClose' => fn(JsonRequest $r): JsonResponse => $this->game(

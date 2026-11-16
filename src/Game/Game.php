@@ -353,6 +353,33 @@ final class Game
         return $this->clock;
     }
 
+    /**
+     * États successifs de la partie, de la position de départ (rang 0) au dernier coup joué :
+     * la relecture se fait sur une copie, la partie elle-même ne change pas.
+     *
+     * @return list<GameFrame>
+     */
+    public function frames(ChessRules $rules): array
+    {
+        $walker = clone $this;
+        $walker->resetBoard();
+        $base = $this->timeControl === null ? null : $this->timeControl->baseSeconds * 1000;
+        $frames = [new GameFrame($walker->position->toFen(), $rules->inCheck($walker->position), null, $walker->captured, $base, $base)];
+        foreach ($this->moves as $played) {
+            $walker->advance($rules->moveFromUci($walker->position, $played->uci));
+            $frames[] = new GameFrame(
+                $walker->position->toFen(),
+                $rules->inCheck($walker->position),
+                $played->uci,
+                $walker->captured,
+                $played->whiteMs,
+                $played->blackMs,
+            );
+        }
+
+        return $frames;
+    }
+
     public function drawOffer(): ?Color
     {
         return $this->drawOffer;
