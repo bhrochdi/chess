@@ -4,14 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <!-- Anti-flash : applique le thème mémorisé dès le 1er paint, avant toute feuille de style -->
-<script>
-  (function(){
-    try {
-      var t = localStorage.getItem('lecercle:theme') || 'bois';
-      document.documentElement.setAttribute('data-theme', t);
-    } catch(e){ document.documentElement.setAttribute('data-theme','bois'); }
-  })();
-</script>
+<script src="js/theme-init.js"></script>
 <title>Le Cercle — Plateforme d'Échecs en ligne</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>

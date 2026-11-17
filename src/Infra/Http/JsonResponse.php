@@ -35,11 +35,29 @@ final readonly class JsonResponse
         );
     }
 
+    /**
+     * En-têtes de chaque réponse de l'API : JSON jamais mis en cache, jamais interprété comme autre chose
+     * (nosniff), jamais affiché dans un cadre ni autorisé à charger quoi que ce soit.
+     *
+     * @return list<string>
+     */
+    public static function headers(): array
+    {
+        return [
+            'Content-Type: application/json; charset=utf-8',
+            'Cache-Control: no-store',
+            'X-Content-Type-Options: nosniff',
+            "Content-Security-Policy: default-src 'none'; frame-ancestors 'none'",
+            'Referrer-Policy: no-referrer',
+        ];
+    }
+
     public function send(): void
     {
         http_response_code($this->status);
-        header('Content-Type: application/json; charset=utf-8');
-        header('Cache-Control: no-store');
+        foreach (self::headers() as $header) {
+            header($header);
+        }
         echo $this->json;
     }
 }

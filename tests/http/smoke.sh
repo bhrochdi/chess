@@ -43,6 +43,16 @@ for path in / /index.html /css/styles.css /js/main.js; do
     expect_status 200 GET "$path"
 done
 
+# En-têtes de sécurité : la page (configuration Apache) et l'API (JsonResponse::headers).
+page_headers=$(curl -s -o /dev/null -D - "$base/" | tr -d '\r')
+grep -qi "^Content-Security-Policy: .*script-src 'self';.*frame-ancestors 'none'" <<<"$page_headers" || fail "GET / : Content-Security-Policy absente ou incomplète"
+for header in 'X-Content-Type-Options: nosniff' 'X-Frame-Options: DENY' 'Referrer-Policy: same-origin'; do
+    grep -qi "^$header\$" <<<"$page_headers" || fail "GET / : en-tête « $header » absent"
+done
+api_headers=$(curl -s -o /dev/null -D - -X POST -H 'Content-Type: application/json' --data-binary '{"action":"ping"}' "$base/api/health.php" | tr -d '\r')
+grep -qi '^X-Content-Type-Options: nosniff$' <<<"$api_headers" || fail "POST /api/health.php : en-tête nosniff absent"
+grep -qi "^Content-Security-Policy: default-src 'none'; frame-ancestors 'none'\$" <<<"$api_headers" || fail "POST /api/health.php : CSP de l'API absente"
+
 headers=$(mktemp)
 body=$(curl -s -D "$headers" -X POST -H 'Content-Type: application/json' --data-binary '{"action":"ping"}' "$base/api/health.php")
 grep -qi '^HTTP/[0-9.]* 200' "$headers" || fail "POST /api/health.php ping : statut $(head -n1 "$headers" | tr -d '\r')"

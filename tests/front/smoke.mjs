@@ -37,9 +37,22 @@ async function newPage(origin) {
   return p;
 }
 
+/* Attend que fn(arg), exécutée dans la page, soit vraie. Remplace page.waitForFunction, qui évalue sa
+   condition comme une chaîne et que la politique de sécurité du site (CSP sans 'unsafe-eval') bloque ;
+   page.evaluate n'y est pas soumis. Le test vérifie ainsi l'application avec sa vraie CSP. */
+async function until(p, fn, arg, { timeout = T } = {}) {
+  const deadline = Date.now() + timeout;
+  for (;;) {
+    try { if (await p.evaluate(fn, arg)) return; }
+    catch (e) { if (!/context was destroyed|navigation/i.test(String(e.message))) throw e; }
+    if (Date.now() > deadline) throw new Error('condition non remplie après ' + timeout + ' ms : ' + String(fn).slice(0, 120));
+    await new Promise((r) => setTimeout(r, 100));
+  }
+}
+
 const wait = (sel, opts = {}) => page.waitForSelector(sel, { timeout: T, ...opts });
 const waitText = (sel, text) =>
-  page.waitForFunction(([s, t]) => (document.querySelector(s)?.textContent || '').includes(t),
+  until(page, ([s, t]) => (document.querySelector(s)?.textContent || '').includes(t),
     [sel, text], { timeout: T });
 const view = async (v) => {
   await page.click(`nav button[data-view=${v}]`);
@@ -58,7 +71,7 @@ async function http() {
     try { await page.goto(BASE_URL, { timeout: 10000 }); break; }
     catch (e) { if (Date.now() > deadline) throw e; await new Promise((r) => setTimeout(r, 2000)); }
   }
-  await page.waitForFunction(() => document.querySelectorAll('#localBoard .sq').length === 64, null, { timeout: T });
+  await until(page, () => document.querySelectorAll('#localBoard .sq').length === 64, null, { timeout: T });
 
   S('inscription');
   await page.click('#btnAuth');
@@ -78,13 +91,13 @@ async function http() {
   await view('local');
   await page.locator('#localBoard .sq').nth(52).click();
   await page.locator('#localBoard .sq').nth(36).click();
-  await page.waitForFunction(
+  await until(page,
     () => [...document.querySelectorAll('#localMoves .ply')].filter((s) => s.textContent.trim()).length >= 2,
     null, { timeout: T });
 
   S('annulation contre l\'ordinateur');
   await page.click('#btnLocalUndo');
-  await page.waitForFunction(
+  await until(page,
     () => [...document.querySelectorAll('#localMoves .ply')].filter((s) => s.textContent.trim()).length === 0,
     null, { timeout: T });
 
@@ -101,7 +114,7 @@ async function http() {
   S('annulation du défi depuis l\'accueil');
   await page.locator('#openGames button', { hasText: 'Annuler' }).first().click();
   await page.click('#confirmYes');
-  await page.waitForFunction(() => !document.querySelector('#openGames button.danger'), null, { timeout: T });
+  await until(page, () => !document.querySelector('#openGames button.danger'), null, { timeout: T });
 
   S('annulation du défi depuis la partie');
   await page.click('#btnCreateGame');
@@ -110,7 +123,7 @@ async function http() {
   await page.click('#btnCancelChallenge');
   await page.click('#confirmYes');
   await wait('#view-home.active');
-  await page.waitForFunction(() => !document.querySelector('#openGames button.danger'), null, { timeout: T });
+  await until(page, () => !document.querySelector('#openGames button.danger'), null, { timeout: T });
 
   S('salon');
   await view('salon');
@@ -163,12 +176,12 @@ async function duel() {
   collect(pageB, origin);
   const on = (p) => ({
     click: (sel) => p.click(sel),
-    text: (sel, t) => p.waitForFunction(([s, x]) => (document.querySelector(s)?.textContent || '').includes(x), [sel, t], { timeout: T }),
-    plies: (n) => p.waitForFunction((k) => [...document.querySelectorAll('#onlineMoves .ply')].filter((e) => e.textContent.trim()).length === k, n, { timeout: T }),
+    text: (sel, t) => until(p, ([s, x]) => (document.querySelector(s)?.textContent || '').includes(x), [sel, t], { timeout: T }),
+    plies: (n) => until(p, (k) => [...document.querySelectorAll('#onlineMoves .ply')].filter((e) => e.textContent.trim()).length === k, n, { timeout: T }),
   });
   const register = async (p, name) => {
     await p.goto(BASE_URL);
-    await p.waitForFunction(() => document.querySelectorAll('#localBoard .sq').length === 64, null, { timeout: T });
+    await until(p, () => document.querySelectorAll('#localBoard .sq').length === 64, null, { timeout: T });
     await p.click('#btnAuth');
     await p.click('#tabRegister');
     await p.fill('#authEmail', name.toLowerCase() + '@example.test');

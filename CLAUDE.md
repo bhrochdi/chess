@@ -77,7 +77,9 @@ sans chargement de partie ni de messages.
   pull request fusionnée publie une version (étiquette `semver:major`,
   `semver:minor`, `semver:patch` ou `semver:none`).
 - Sécurité : requêtes préparées partout ; aucun identifiant versionné
-  (`api/config.php` et `.env` sont ignorés par git) ; `esc()` sur toute valeur
+  (`api/config.php` et `.env` sont ignorés par git) ; pas de script en ligne
+  ni d'`eval` dans le front, que la CSP de la page bloquerait (un nouveau
+  script va dans `public/js/` et dans `index.html`) ; `esc()` sur toute valeur
   insérée dans la page.
 - Moteur d'échecs (`src/Chess/`) : aucune modification sans tests de
   non-régression, perft compris.
@@ -107,8 +109,8 @@ php bin/migrate.php           # applique les migrations
 - Les tests d'intégration (`composer test:integration`) vident leurs tables :
   ils visent la base `le_cercle_test` et lisent `DB_HOST`, `DB_PORT`, `DB_USER`
   et `DB_PASS` dans l'environnement. Sans ces variables, les lancer par Docker.
-- Le contrôle de style (`composer lint`) se juge dans Docker ou en CI : sur un
-  clone Windows aux fins de ligne CRLF, PHP-CS-Fixer signale tous les fichiers.
+- Fins de ligne : `.gitattributes` impose LF pour tout le texte du dépôt,
+  quel que soit `core.autocrlf` ; `composer lint` passe donc aussi sous Windows.
 - Les commandes Docker et la CI sont décrites dans `README.md`.
 
 ## Reste à faire

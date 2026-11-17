@@ -11,16 +11,25 @@ use LeCercle\Shared\SessionLogin;
 /**
  * Session PHP native, clé $_SESSION['user_id'] comme dans api/auth.php (même
  * cookie PHPSESSID). La lecture ouvre la session en read_and_close : les
- * requêtes de polling n'attendent pas le verrou de session.
+ * requêtes de polling n'attendent pas le verrou de session. Servie en HTTPS,
+ * la session pose un cookie « Secure », que le navigateur n'envoie jamais en clair.
  */
 final class PhpSession implements CurrentUser, SessionLogin
 {
     private const KEY = 'user_id';
-    private const OPTIONS = [
-        'cookie_httponly' => true,
-        'cookie_samesite' => 'Lax',
-        'use_strict_mode' => true,
-    ];
+
+    /** @var array<string, bool|string> */
+    private readonly array $options;
+
+    public function __construct(bool $secure = false)
+    {
+        $this->options = [
+            'cookie_httponly' => true,
+            'cookie_samesite' => 'Lax',
+            'cookie_secure' => $secure,
+            'use_strict_mode' => true,
+        ];
+    }
 
     public function id(): ?string
     {
@@ -28,7 +37,7 @@ final class PhpSession implements CurrentUser, SessionLogin
             if (!$this->hasSessionId()) {
                 return null;
             }
-            session_start(self::OPTIONS + ['read_and_close' => true]);
+            session_start($this->options + ['read_and_close' => true]);
         }
         $id = $_SESSION[self::KEY] ?? null;
 
@@ -43,7 +52,7 @@ final class PhpSession implements CurrentUser, SessionLogin
     public function logIn(string $userId): void
     {
         if (session_status() !== PHP_SESSION_ACTIVE) {
-            session_start(self::OPTIONS);
+            session_start($this->options);
         }
         session_regenerate_id(true);
         $_SESSION[self::KEY] = $userId;
@@ -56,7 +65,7 @@ final class PhpSession implements CurrentUser, SessionLogin
             if (!$this->hasSessionId()) {
                 return;
             }
-            session_start(self::OPTIONS);
+            session_start($this->options);
         }
         $_SESSION = [];
         session_destroy();

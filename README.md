@@ -117,7 +117,9 @@ docker compose exec db sh /docker-entrypoint-initdb.d/02-test-database.sh
    ```
 4. Hôte virtuel Apache (menu WampServer → Apache → `httpd-vhosts.conf`) : la
    racine web est `public/` et `api/` est servi sous `/api`. Rien d'autre du
-   dépôt (`src/`, `vendor/`, `sql/`…) n'est accessible.
+   dépôt (`src/`, `vendor/`, `sql/`…) n'est accessible. Les lignes `Header`
+   posent les en-têtes de sécurité de la page (module `mod_headers`, actif par
+   défaut sous WampServer) ; les mêmes figurent dans `docker/php/apache-site.conf`.
    ```
    <VirtualHost *:80>
        ServerName le-cercle.localhost
@@ -126,6 +128,11 @@ docker compose exec db sh /docker-entrypoint-initdb.d/02-test-database.sh
        <Directory "c:/wamp64/www/le-cercle/public">
            Options -Indexes
            Require all granted
+           Header always set Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data:; connect-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'"
+           Header always set X-Content-Type-Options "nosniff"
+           Header always set X-Frame-Options "DENY"
+           Header always set Referrer-Policy "same-origin"
+           Header always set Permissions-Policy "camera=(), microphone=(), geolocation=()"
        </Directory>
        <Directory "c:/wamp64/www/le-cercle/api">
            Options -Indexes
@@ -134,7 +141,8 @@ docker compose exec db sh /docker-entrypoint-initdb.d/02-test-database.sh
        </Directory>
    </VirtualHost>
    ```
-   Redémarrer Apache, puis ouvrir `http://le-cercle.localhost/`.
+   Redémarrer Apache, puis ouvrir `http://le-cercle.localhost/`. Servi en
+   HTTPS, le site pose un cookie de session « Secure » de lui-même.
 
 Une mise à jour se limite à récupérer le code puis relancer
 `php bin/migrate.php`.

@@ -16,9 +16,20 @@
 | Découverte des comptes existants | même message et même temps de calcul pour un compte inconnu et un mauvais mot de passe |
 | Fixation de session | identifiant de session régénéré à la connexion, session détruite à la déconnexion |
 | Injection SQL | requêtes préparées partout (PDO) |
-| Injection HTML dans les messages | `esc()` sur toute valeur insérée dans la page |
+| Injection HTML dans les messages | `esc()` sur toute valeur insérée dans la page ; en seconde ligne, la politique de sécurité du contenu (CSP) de la page n'exécute que les scripts du site (`script-src 'self'`, aucun script en ligne, pas d'`eval`) |
+| Page affichée dans un cadre d'un autre site (clic détourné) | `frame-ancestors 'none'` et `X-Frame-Options: DENY` |
+| Vol du cookie de session | cookie `HttpOnly` et `SameSite=Lax` ; `Secure` dès que le site est servi en HTTPS (`Infrastructure::isHttps()`) |
+| Réponse interprétée comme un autre type de fichier | `X-Content-Type-Options: nosniff` sur la page et sur chaque réponse de l'API |
 | Fichiers sensibles servis par Apache | racine web limitée à `public/` ; `api/config*.php` répond 404 ; identifiants hors du dépôt (`api/config.php`, `.env`) |
 | Abus d'un administrateur | journal écrit dans la même transaction que chaque action d'administration |
+
+En-têtes de sécurité : ceux de la page sont posés par Apache (lignes `Header`
+de `docker/php/apache-site.conf` et de l'hôte virtuel WampServer du README),
+ceux de l'API par PHP (`JsonResponse::headers()`), quelle que soit la
+configuration du serveur. `tests/http/smoke.sh` vérifie les deux. Le test de
+fumée navigateur tourne avec la vraie CSP : il attend ses conditions par
+`page.evaluate` (fonction `until`), car `waitForFunction` de Playwright
+évalue une chaîne, ce que la CSP interdit.
 
 ## Tests et qualité
 
