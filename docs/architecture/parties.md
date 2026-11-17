@@ -33,6 +33,7 @@ stateDiagram-v2
     [*] --> playing : create (local, ordinateur)
     open --> playing : join
     open --> finished : adminClose
+    open --> [*] : cancel (auteur du défi)
     playing --> finished : fin de partie, adminClose
     finished --> playing : undo (local, ordinateur)
     note right of finished
@@ -65,6 +66,7 @@ répond 400 « Action inconnue. » ; un paramètre absent ou mal typé, 422
 |--------|------------|-------|---------|---------|
 | `create` | `mode`, `level` (ordinateur), `tc` (`{ base, inc }` en secondes ou `null`), `color` (en ligne : `w`, `b`, `random`) | compte | `{ game }` : `playing` (local, ordinateur) ou `open` (en ligne) | 403 ; 422 mode, niveau, couleur ou cadence ; 429 au-delà du débit de création |
 | `join` | `id` | compte | `{ game }` `playing` ; un joueur de la partie la reçoit telle quelle | 404 ; 409 « Cette partie a déjà commencé. » |
+| `cancel` | `id` | auteur du défi | `{}` ; le défi et ses commentaires sont supprimés, rien n'est compté | 404 ; 403 « Seul l’auteur du défi peut l’annuler. » ; 409 « Seul un défi qui attend encore un adversaire peut être annulé. » |
 | `get` | `id`, `known?` (la `version` affichée) | tous (local, ordinateur : propriétaire seulement) | `{ game }` ; `{ unchanged: true }` si `known` est la version courante | 404 « Partie introuvable. » |
 | `move` | `id`, `uci`, `ply` (nombre de coups connus du client) | joueur au trait | `{ game }`, réponse de l'ordinateur comprise | 404 ; 403 ; 409 pas en cours, pas ton tour, « La partie a avancé : recharge-la. » ; 422 « Coup illégal. » |
 | `resign` | `id` | joueur en ligne | `{ game }` terminée, `abandon` | 404 ; 403 ; 409 |
@@ -79,6 +81,15 @@ répond 400 « Action inconnue. » ; un paramètre absent ou mal typé, 422
 
 Une partie locale ou contre l'ordinateur n'existe que pour son propriétaire :
 tout autre visiteur reçoit 404.
+
+Annulation d'un défi : `cancel` verrouille la partie, vérifie qu'elle attend
+encore un adversaire et que le demandeur en est l'auteur
+(`Game::assertCancellableBy()`), puis la supprime avec ses commentaires. Un
+adversaire qui rejoint au même instant passe avant ou après, jamais les deux :
+si `join` gagne, l'annulation répond 409 et la partie continue. L'annulation
+n'est pas journalisée (ce n'est pas une action d'administration) et ne rend
+pas de place dans la limite de 5 défis par 10 minutes, qui compte les
+créations.
 
 Historique et relecture : `history` liste les parties en ligne terminées du
 compte connecté, les parties de tournoi comprises (les parties locales et

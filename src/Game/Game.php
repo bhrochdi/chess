@@ -189,6 +189,20 @@ final class Game
         $this->apply($rules->moveFromUci($this->position, $move->toUci()), $rules, $now);
     }
 
+    /**
+     * Un défi en ligne que personne n'a encore rejoint peut être retiré par son auteur, et par lui seul :
+     * une partie commencée se termine par abandon ou nulle, jamais par annulation.
+     */
+    public function assertCancellableBy(string $userId): void
+    {
+        if ($this->mode !== GameMode::Online || $this->status !== GameStatus::Open) {
+            throw new ConflictException('Seul un défi qui attend encore un adversaire peut être annulé.');
+        }
+        if ($userId !== $this->ownerId) {
+            throw new ForbiddenException('Seul l’auteur du défi peut l’annuler.');
+        }
+    }
+
     /** Prend le siège libre et lance la partie : la pendule des blancs part maintenant. Sans effet pour un joueur de la partie. */
     public function join(string $userId, \DateTimeImmutable $now): void
     {

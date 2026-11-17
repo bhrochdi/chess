@@ -18,6 +18,13 @@ expect_api 200 /api/games.php "{\"action\":\"replay\",\"id\":\"$game_id\"}" '"fr
 expect_api 200 /api/games.php '{"action":"history"}' '"games":[],"more":false'
 expect_api 422 /api/games.php '{"action":"history","offset":-1}' 'Page d’historique invalide.'
 expect_api 404 /api/games.php '{"action":"get","id":"g000000000000"}' 'Partie introuvable.'
+# Annulation d'un défi par son auteur : la partie disparaît.
+new_session
+register_user
+expect_api 200 /api/games.php '{"action":"create","mode":"online","tc":null}' '"status":"open"'
+challenge_id=$(grep -o '"id":"g[0-9a-f]\{12\}"' <<<"$body" | head -n1 | cut -d'"' -f4)
+expect_api 200 /api/games.php "{\"action\":\"cancel\",\"id\":\"$challenge_id\"}" '{"ok":true}'
+expect_api 404 /api/games.php "{\"action\":\"get\",\"id\":\"$challenge_id\"}" 'Partie introuvable.'
 # Débit des défis : 5 par compte en 10 minutes, le suivant est refusé.
 new_session
 register_user

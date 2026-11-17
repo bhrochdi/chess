@@ -98,6 +98,20 @@ async function http() {
   await waitText('#gameChatLog', 'coucou partie');
   await page.click('#btnOnlineLeave');
 
+  S('annulation du défi depuis l\'accueil');
+  await page.locator('#openGames button', { hasText: 'Annuler' }).first().click();
+  await page.click('#confirmYes');
+  await page.waitForFunction(() => !document.querySelector('#openGames button.danger'), null, { timeout: T });
+
+  S('annulation du défi depuis la partie');
+  await page.click('#btnCreateGame');
+  await wait('#view-online.active');
+  await wait('#btnCancelChallenge', { state: 'visible' });
+  await page.click('#btnCancelChallenge');
+  await page.click('#confirmYes');
+  await wait('#view-home.active');
+  await page.waitForFunction(() => !document.querySelector('#openGames button.danger'), null, { timeout: T });
+
   S('salon');
   await view('salon');
   await page.fill('#salonInput', 'bonjour salon');

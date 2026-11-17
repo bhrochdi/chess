@@ -111,6 +111,21 @@ final class GameService
         });
     }
 
+    /**
+     * Retire un défi que personne n'a rejoint : la partie et ses commentaires sont supprimés, rien n'est
+     * compté dans les statistiques. Sous verrou : un adversaire qui rejoint au même instant passe avant
+     * ou après, jamais les deux.
+     */
+    public function cancel(string $id): void
+    {
+        $actor = $this->access->member();
+        $this->transactions->run(function () use ($id, $actor): void {
+            $game = $this->visible($this->games->getForUpdate($id), $actor);
+            $game->assertCancellableBy($actor->id);
+            $this->games->delete($game->id());
+        });
+    }
+
     /** @return array<string, mixed> */
     public function get(string $id): array
     {

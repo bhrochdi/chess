@@ -41,7 +41,19 @@ async function refreshLobby() {
         b.textContent = 'Rejoindre';
         b.addEventListener('click', () => joinGame(g.id));
       }
-      item.appendChild(b);
+      if (mine) {
+        const actions = document.createElement('span');
+        actions.className = 'actions';
+        const cancel = document.createElement('button');
+        cancel.className = 'danger';
+        cancel.textContent = '✕ Annuler';
+        cancel.title = 'Retirer ce défi';
+        cancel.addEventListener('click', async () => { await cancelChallenge(g.id); refreshLobby(); });
+        actions.append(b, cancel);
+        item.appendChild(actions);
+      } else {
+        item.appendChild(b);
+      }
       open.appendChild(item);
     } else if (g.status === 'playing') {
       const item = document.createElement('div');

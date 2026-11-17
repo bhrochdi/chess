@@ -87,7 +87,12 @@ tel quel. Aucune réponse 500.
 ## 3. Partie en ligne
 
 1. **Alice** : **Accueil** → **Créer et attendre un adversaire** (Blitz — 5 min).
-   - Attendu : « En attente d'un adversaire… ».
+   - Attendu : « En attente d'un adversaire… » ; à la place d'**Abandonner**
+     et **Proposer nulle**, un bouton **✕ Annuler le défi**.
+   - **✕ Annuler le défi** puis confirmer : retour à l'accueil, le défi a
+     disparu des « Parties ouvertes ». Recréer un défi pour la suite.
+   - Sur l'accueil, son propre défi porte aussi **✕ Annuler** ; celui des
+     autres porte seulement **Rejoindre**.
 2. **Bob** : la partie apparaît dans « Parties ouvertes — défis à relever » →
    **Rejoindre**.
    - Attendu : les deux écrans passent en partie en cours en quelques secondes

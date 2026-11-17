@@ -55,7 +55,8 @@ joueur ; le niveau maître reste sous 10 s par coup.
 ligne ».
 
 Un joueur crée un défi (cadence, couleur ou tirage au sort) ; il apparaît dans
-« Parties ouvertes ». Un autre le rejoint et la partie commence. Chacun joue à
+« Parties ouvertes ». Tant que personne ne l'a rejoint, son auteur peut
+l'annuler. Un autre le rejoint et la partie commence. Chacun joue à
 son tour, peut proposer la nulle, l'accepter ou abandonner. La pendule tourne
 pour le camp au trait ; à zéro, la partie est perdue au temps.
 
