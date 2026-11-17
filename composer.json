@@ -2,6 +2,7 @@
     "name": "lecercle/le-cercle",
     "description": "Le Cercle — plateforme d'échecs en ligne",
     "type": "project",
+    "license": "AGPL-3.0-or-later",
     "require": {
         "php": ">=8.3"
     },

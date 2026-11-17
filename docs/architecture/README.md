@@ -10,7 +10,8 @@ les vérifications à la main dans [TESTS-MANUELS.md](../TESTS-MANUELS.md).
 Le Cercle est le site d'un club d'échecs : on y joue (seul contre l'ordinateur,
 à deux sur un même écran, ou en ligne), on y discute, on y suit des tournois, et
 un administrateur y tient l'ordre. Il tourne sur un hébergement PHP/MySQL
-ordinaire (WampServer, Apache mutualisé ou Docker), sans service externe.
+ordinaire (WampServer, Apache mutualisé ou Docker), sans service tiers à
+configurer ; seules les polices de caractères viennent de Google Fonts.
 
 Un principe guide tout le reste : **le serveur décide, le navigateur affiche.**
 Le navigateur envoie des intentions (« jouer e2e4 », « abandonner », « envoyer

@@ -12,6 +12,7 @@
   <img alt="Docker" src="https://img.shields.io/badge/Docker-compose-2496ED">
   <img alt="PHPStan niveau 8" src="https://img.shields.io/badge/PHPStan-niveau%208-4F5B93">
   <a href="docs/README.md"><img alt="docs" src="https://img.shields.io/badge/docs-fran%C3%A7ais-0A7BBB"></a>
+  <a href="LICENSE"><img alt="licence AGPL-3.0" src="https://img.shields.io/badge/licence-AGPL--3.0-663366"></a>
 </p>
 
 <p align="center">
@@ -21,16 +22,23 @@
   <a href="https://github.com/bhrochdi/chess/releases">Versions</a>
 </p>
 
-Le Cercle est le site d'un club d'échecs. On y joue contre l'ordinateur, à deux
-sur un même écran ou en ligne, on discute dans des salons ou en privé, on suit
-et on dispute des tournois, et un administrateur modère le tout. Il tourne sur
-un hébergement PHP/MySQL ordinaire (WampServer, Apache ou Docker), sans service
-externe.
+Le Cercle est le site web d'un club d'échecs, à installer sur son propre
+hébergement. Les membres y jouent contre l'ordinateur, à deux sur un même écran
+ou en ligne les uns contre les autres ; ils discutent dans des salons ou en
+privé, commentent les parties en direct et disputent des tournois. Un
+administrateur gère les comptes, les salons, les parties et les tournois.
 
-Le serveur décide de tout : coups légaux, pendule, résultats, appariements et
-droits d'administration sont calculés en PHP. Le navigateur affiche l'état reçu
-et envoie les actions du joueur ; modifier le JavaScript de sa page ne permet
+Il tourne sur un hébergement PHP/MySQL ordinaire (WampServer, Apache ou
+Docker), sans framework ni service tiers à configurer : aucun compte à créer
+ailleurs, aucune clé d'API. Seules les polices de caractères sont chargées
+depuis Google Fonts.
+
+Le serveur est l'arbitre : coups légaux, pendule, résultats, appariements et
+droits d'administration sont décidés en PHP. Le navigateur affiche l'état reçu
+et transmet les actions du joueur ; modifier le JavaScript de sa page ne permet
 pas de tricher.
+
+Le Cercle est un logiciel libre, sous [licence AGPL-3.0](#licence).
 
 ## Ce qu'il fait
 
@@ -213,4 +221,12 @@ jamais versionnés (`api/config.php`, `.env`) ; pas de modification du moteur
 
 ## Licence
 
-Le dépôt n'a pas encore de licence ; le choix revient à son propriétaire.
+Le Cercle est un logiciel libre, distribué sous la licence
+[GNU Affero General Public License, version 3 ou ultérieure](LICENSE)
+(AGPL-3.0-or-later).
+
+Chacun peut l'utiliser, l'étudier, le modifier et le redistribuer. En
+contrepartie, qui fait tourner une version modifiée sur un site accessible à
+d'autres personnes doit leur donner accès au code source de cette version,
+sous la même licence : les améliorations apportées par un club qui héberge sa
+propre copie reviennent à tous.
