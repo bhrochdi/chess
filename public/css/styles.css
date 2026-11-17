@@ -160,6 +160,7 @@
   .list .item:hover { border-color: var(--panel-edge); }
   .list .item .dot { display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: var(--green); box-shadow: 0 0 7px rgba(122,141,84,.6); margin-right: 9px; }
   .list .item button { padding: 6px 13px; font-size: 13px; }
+  .list .item .actions { display: flex; gap: 6px; flex-shrink: 0; }
   .list:empty::after { content: attr(data-empty); color: var(--muted); font-style: italic; font-size: 13px; }
 
   /* ---------- Plateau ---------- */

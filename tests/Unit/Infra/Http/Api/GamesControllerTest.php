@@ -80,6 +80,23 @@ final class GamesControllerTest extends TestCase
         self::assertSame('Partie introuvable.', $body['error']);
     }
 
+    public function testCancelAnswersOkThenTheGameIsGone(): void
+    {
+        $id = $this->call('{"action":"create","mode":"online","color":"w"}', self::ALICE)[1]['game']['id'];
+
+        self::assertSame([403, 'Seul l’auteur du défi peut l’annuler.'], $this->statusAndError('{"action":"cancel","id":"' . $id . '"}', self::BOB));
+        self::assertSame([200, ['ok' => true]], $this->call('{"action":"cancel","id":"' . $id . '"}', self::ALICE));
+        self::assertSame([404, 'Partie introuvable.'], $this->statusAndError('{"action":"get","id":"' . $id . '"}', self::ALICE));
+    }
+
+    /** @return array{int, mixed} */
+    private function statusAndError(string $json, ?string $userId): array
+    {
+        [$status, $body] = $this->call($json, $userId);
+
+        return [$status, $body['error'] ?? null];
+    }
+
     public function testJoiningAStartedGameIsAConflict(): void
     {
         $id = $this->onlineGame($this->service());

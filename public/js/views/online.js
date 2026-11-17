@@ -73,12 +73,34 @@ function enterOnlineGame(id) {
   onlinePoll = setInterval(() => { if (!document.hidden) syncOnline(); }, 2500);
 }
 
-$('btnOnlineLeave').addEventListener('click', () => {
+function leaveOnlineGame() {
   if (onlinePoll) clearInterval(onlinePoll);
   onlinePoll = null; OR = null; onlineId = null;
   $('onlineGameUI').style.display = 'none';
   $('onlineEmpty').style.display = '';
   switchView('home');
+}
+
+/* Retire un défi que personne n'a rejoint ; s'il vient d'être rejoint, le serveur refuse et la partie s'affiche. */
+async function cancelChallenge(id) {
+  if (!await askConfirm('Annuler le défi ?', 'Il disparaîtra de la liste des parties ouvertes.')) return false;
+  try {
+    await api('games', 'cancel', { id });
+    return true;
+  } catch (e) {
+    alert(e.message);
+    return false;
+  }
+}
+
+$('btnCancelChallenge').addEventListener('click', async () => {
+  if (!OR || OR.status !== 'open') return;
+  if (await cancelChallenge(OR.id)) leaveOnlineGame();
+  else syncOnline();
+});
+
+$('btnOnlineLeave').addEventListener('click', () => {
+  leaveOnlineGame();
 });
 
 /* Relecture périodique : la version affichée est renvoyée au serveur, qui répond « unchanged » si rien
@@ -126,6 +148,11 @@ function renderOnline() {
       st.innerHTML += '<div class="small" style="margin-top:6px">Proposition de nulle envoyée…</div>';
     }
   }
+  /* Défi en attente : son auteur peut le retirer ; abandon et nulle n'ont pas de sens avant le premier joueur adverse. */
+  const waiting = OR.status === 'open' && isPlayer;
+  $('btnCancelChallenge').hidden = !waiting;
+  $('btnResign').hidden = waiting;
+  $('btnDraw').hidden = waiting;
   $('btnResign').disabled = !isPlayer || OR.status !== 'playing';
   $('btnDraw').disabled = !isPlayer || OR.status !== 'playing' || OR.drawOffer === OR.yourColor;
 }
