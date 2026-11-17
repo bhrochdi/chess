@@ -12,6 +12,7 @@
   <img alt="Docker" src="https://img.shields.io/badge/Docker-compose-2496ED">
   <img alt="PHPStan niveau 8" src="https://img.shields.io/badge/PHPStan-niveau%208-4F5B93">
   <a href="docs/README.md"><img alt="docs" src="https://img.shields.io/badge/docs-fran%C3%A7ais-0A7BBB"></a>
+  <a href="LICENSE"><img alt="licence AGPL-3.0" src="https://img.shields.io/badge/licence-AGPL--3.0-663366"></a>
 </p>
 
 <p align="center">
@@ -213,4 +214,12 @@ jamais versionnés (`api/config.php`, `.env`) ; pas de modification du moteur
 
 ## Licence
 
-Le dépôt n'a pas encore de licence ; le choix revient à son propriétaire.
+Le Cercle est un logiciel libre, distribué sous la licence
+[GNU Affero General Public License, version 3 ou ultérieure](LICENSE)
+(AGPL-3.0-or-later).
+
+Chacun peut l'utiliser, l'étudier, le modifier et le redistribuer. En
+contrepartie, qui fait tourner une version modifiée sur un site accessible à
+d'autres personnes doit leur donner accès au code source de cette version,
+sous la même licence : les améliorations apportées par un club qui héberge sa
+propre copie reviennent à tous.
