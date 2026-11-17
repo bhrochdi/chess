@@ -35,12 +35,29 @@ final class Infrastructure
     private ?AdminJournal $adminJournal = null;
     private ?Throttle $throttle = null;
 
-    /** @param \Closure(): DbConfig $config */
-    public function __construct(private readonly \Closure $config) {}
+    /**
+     * @param \Closure(): DbConfig $config
+     * @param bool                 $https  requête reçue en HTTPS : le cookie de session est alors « Secure »
+     */
+    public function __construct(private readonly \Closure $config, private readonly bool $https = false) {}
 
     public static function fromGlobals(string $configFile): self
     {
-        return new self(static fn(): DbConfig => DbConfig::load(getenv(), $configFile));
+        return new self(static fn(): DbConfig => DbConfig::load(getenv(), $configFile), self::isHttps($_SERVER));
+    }
+
+    /**
+     * Vrai si Apache a reçu la requête en HTTPS. Aucun mandataire n'est placé devant l'application :
+     * les en-têtes X-Forwarded-* ne sont pas lus, un client pourrait les forger.
+     *
+     * @param array<mixed> $server
+     */
+    public static function isHttps(array $server): bool
+    {
+        $https = $server['HTTPS'] ?? null;
+
+        return (\is_string($https) && $https !== '' && strtolower($https) !== 'off')
+            || (string) ($server['SERVER_PORT'] ?? '') === '443';
     }
 
     public function pdo(): PDO
@@ -56,7 +73,7 @@ final class Infrastructure
     /** À typer CurrentUser ou SessionLogin là où la session est consommée. */
     public function session(): PhpSession
     {
-        return $this->session ??= new PhpSession();
+        return $this->session ??= new PhpSession($this->https);
     }
 
     public function transactions(): TransactionRunner

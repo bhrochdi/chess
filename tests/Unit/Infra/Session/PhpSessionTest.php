@@ -71,6 +71,23 @@ final class PhpSessionTest extends TestCase
         self::assertSame('u7', (new PhpSession())->id());
     }
 
+    public function testTheCookieIsNotSecureByDefault(): void
+    {
+        (new PhpSession())->logIn('u7');
+
+        self::assertFalse(session_get_cookie_params()['secure']);
+    }
+
+    public function testTheCookieIsSecureWhenAskedFor(): void
+    {
+        (new PhpSession(secure: true))->logIn('u7');
+
+        $params = session_get_cookie_params();
+        self::assertTrue($params['secure']);
+        self::assertTrue($params['httponly']);
+        self::assertSame('Lax', $params['samesite']);
+    }
+
     public function testLogOutForgetsTheUser(): void
     {
         $session = new PhpSession();
