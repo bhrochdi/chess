@@ -264,7 +264,8 @@ async function duel() {
   await A.text('#onlineStatus', 'Abandon');
   await pageR.click('nav button[data-view=home]');
   await pageR.click('nav button[data-view=admin]');
-  await pageR.locator('#admTournList button', { hasText: 'Gérer' }).first().click();
+  // Ligne du tournoi visé : déjà sélectionné, son bouton affiche « ✓ Géré » et non « Gérer ».
+  await pageR.locator('#admTournList tr', { hasText: 'Coupe duel' }).locator('button', { hasText: /Gér/ }).click();
   await R.text('#admTournDetail', '0-1');
   await third.close();
   await other.close();
