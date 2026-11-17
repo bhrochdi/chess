@@ -22,16 +22,23 @@
   <a href="https://github.com/bhrochdi/chess/releases">Versions</a>
 </p>
 
-Le Cercle est le site d'un club d'échecs. On y joue contre l'ordinateur, à deux
-sur un même écran ou en ligne, on discute dans des salons ou en privé, on suit
-et on dispute des tournois, et un administrateur modère le tout. Il tourne sur
-un hébergement PHP/MySQL ordinaire (WampServer, Apache ou Docker), sans service
-externe.
+Le Cercle est le site web d'un club d'échecs, à installer sur son propre
+hébergement. Les membres y jouent contre l'ordinateur, à deux sur un même écran
+ou en ligne les uns contre les autres ; ils discutent dans des salons ou en
+privé, commentent les parties en direct et disputent des tournois. Un
+administrateur gère les comptes, les salons, les parties et les tournois.
 
-Le serveur décide de tout : coups légaux, pendule, résultats, appariements et
-droits d'administration sont calculés en PHP. Le navigateur affiche l'état reçu
-et envoie les actions du joueur ; modifier le JavaScript de sa page ne permet
+Il tourne sur un hébergement PHP/MySQL ordinaire (WampServer, Apache ou
+Docker), sans framework ni service tiers à configurer : aucun compte à créer
+ailleurs, aucune clé d'API. Seules les polices de caractères sont chargées
+depuis Google Fonts.
+
+Le serveur est l'arbitre : coups légaux, pendule, résultats, appariements et
+droits d'administration sont décidés en PHP. Le navigateur affiche l'état reçu
+et transmet les actions du joueur ; modifier le JavaScript de sa page ne permet
 pas de tricher.
+
+Le Cercle est un logiciel libre, sous [licence AGPL-3.0](#licence).
 
 ## Ce qu'il fait
 
