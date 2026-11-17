@@ -5,5 +5,6 @@
   await loadSession();
   if (pseudo) { heartbeat(); refreshThreads(); }
   refreshLobby();
+  refreshHistory();
   refreshSalon();
 })();

@@ -32,6 +32,8 @@ final class GameService
     public const LOBBY_LIMIT = 30;
     public const MINE_LIMIT = 10;
     public const ADMIN_LIST_LIMIT = 200;
+    public const HISTORY_LIMIT = 20;
+    public const HISTORY_MAX_OFFSET = 10_000;
 
     /** Créations par compte en dix minutes : défis en ligne d'une part, parties locales ou contre l'ordinateur de l'autre. */
     public const MAX_CHALLENGES = 5;
@@ -265,6 +267,38 @@ final class GameService
         $actor = $this->access->member();
 
         return $this->views->summaries($this->games->unfinishedOf($actor->id, self::MINE_LIMIT));
+    }
+
+    /**
+     * Parties en ligne terminées du compte connecté (tournois compris), les plus récentes d'abord,
+     * par pages de HISTORY_LIMIT ; « more » dit s'il en reste après cette page.
+     *
+     * @return array{games: list<array<string, mixed>>, more: bool}
+     */
+    public function history(int $offset): array
+    {
+        $actor = $this->access->member();
+        if ($offset < 0 || $offset > self::HISTORY_MAX_OFFSET) {
+            throw new ValidationException('Page d’historique invalide.');
+        }
+        // Une partie de plus que la page : sa présence dit qu'il en reste, sans requête de comptage.
+        $games = $this->games->finishedOf($actor->id, self::HISTORY_LIMIT + 1, $offset);
+
+        return [
+            'games' => $this->views->summaries(\array_slice($games, 0, self::HISTORY_LIMIT)),
+            'more' => \count($games) > self::HISTORY_LIMIT,
+        ];
+    }
+
+    /**
+     * Relecture coup par coup : la position après chaque demi-coup, calculée ici pour que le navigateur
+     * n'applique aucune règle. Mêmes droits de lecture que get().
+     *
+     * @return array{id: string, frames: list<array<string, mixed>>}
+     */
+    public function replay(string $id): array
+    {
+        return $this->views->replay($this->readable($id, $this->access->viewer()));
     }
 
     /** @return array{filename: string, pgn: string} */

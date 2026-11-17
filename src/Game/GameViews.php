@@ -64,6 +64,25 @@ final class GameViews
     }
 
     /**
+     * Relecture coup par coup : une entrée par demi-coup, la position de départ en tête.
+     *
+     * @return array{id: string, frames: list<array<string, mixed>>}
+     */
+    public function replay(Game $game): array
+    {
+        return [
+            'id' => $game->id(),
+            'frames' => array_map(static fn(GameFrame $f): array => [
+                'fen' => $f->fen,
+                'inCheck' => $f->inCheck,
+                'lastMove' => $f->lastUci === null ? null : ['from' => substr($f->lastUci, 0, 2), 'to' => substr($f->lastUci, 2, 2)],
+                'captured' => $f->captured,
+                'clock' => $f->whiteMs === null || $f->blackMs === null ? null : ['whiteMs' => $f->whiteMs, 'blackMs' => $f->blackMs],
+            ], $game->frames($this->rules)),
+        ];
+    }
+
+    /**
      * @param list<GameSummary> $games
      *
      * @return list<array<string, mixed>> un seul Members::findMany() pour toute la liste

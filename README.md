@@ -46,7 +46,8 @@ Le Cercle est un logiciel libre, sous [licence AGPL-3.0](#licence).
   écran, avec pendule, annulation de coup, échiquier retournable et export PGN.
   La partie reprend après un rechargement.
 - **Parties en ligne** : défis ouverts, pendule tenue par le serveur, nulle,
-  abandon, spectateurs et commentaires en direct sous la partie.
+  abandon, spectateurs et commentaires en direct sous la partie. Chaque joueur
+  retrouve ses parties terminées et les revoit coup par coup.
 - **Discussions** : salons thématiques avec badge de non-lus, messages privés.
 - **Tournois** toutes rondes, élimination directe ou système suisse. Chaque
   rencontre est une partie en ligne, et son résultat s'inscrit au classement

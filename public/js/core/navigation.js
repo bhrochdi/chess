@@ -10,7 +10,7 @@ function switchView(v) {
   document.querySelectorAll('nav button').forEach(x => x.classList.toggle('active', x.dataset.view === v));
   document.querySelectorAll('.view').forEach(x => x.classList.remove('active'));
   $('view-' + v).classList.add('active');
-  if (v === 'home') refreshLobby();
+  if (v === 'home') { refreshLobby(); refreshHistory(); }
   if (v === 'local') enterLocal();
   if (v === 'salon') { updateSalonBadge(0); refreshSalon(); }
   if (v === 'dm') refreshThreads();

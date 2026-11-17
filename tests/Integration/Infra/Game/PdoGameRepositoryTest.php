@@ -520,4 +520,32 @@ final class PdoGameRepositoryTest extends DatabaseTestCase
         $this->expectExceptionMessage('Partie introuvable.');
         $this->repo->pulse('g999999999999');
     }
+
+    public function testFinishedOfListsTheFinishedOnlineGamesOfAPlayerNewestFirst(): void
+    {
+        $now = self::at('2026-11-12 12:00:00.000');
+        $finish = function (string $id, string $white, string $black, \DateTimeImmutable $at): void {
+            $game = Game::online($id, $white, Color::White, null, $at);
+            $game->join($black, $at);
+            $game->closeByAdmin(Result::Draw, $at);
+            $this->repo->add($game);
+        };
+        $finish('g000000000001', 'alice', 'bob', $now->modify('-2 minutes'));
+        $finish('g000000000002', 'bob', 'alice', $now);
+        $finish('g000000000003', 'bob', 'carol', $now);
+        $playing = Game::online('g000000000004', 'alice', Color::White, null, $now);
+        $playing->join('bob', $now);
+        $this->repo->add($playing);
+        $local = Game::local('g000000000005', 'alice', null, $now);
+        $local->closeByAdmin(Result::WhiteWins, $now);
+        $this->repo->add($local);
+
+        $ids = static fn(array $summaries): array => array_map(static fn($s): string => $s->id, $summaries);
+
+        self::assertSame(['g000000000002', 'g000000000001'], $ids($this->repo->finishedOf('alice', 10, 0)));
+        self::assertSame(['g000000000002'], $ids($this->repo->finishedOf('alice', 1, 0)));
+        self::assertSame(['g000000000001'], $ids($this->repo->finishedOf('alice', 10, 1)));
+        self::assertSame([], $ids($this->repo->finishedOf('alice', 10, 2)));
+        self::assertSame(Result::Draw, $this->repo->finishedOf('alice', 1, 0)[0]->result);
+    }
 }

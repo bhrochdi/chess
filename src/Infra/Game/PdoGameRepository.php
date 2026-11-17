@@ -164,6 +164,20 @@ final class PdoGameRepository implements GameRepository
         return $this->summaries($stmt);
     }
 
+    public function finishedOf(string $userId, int $limit, int $offset): array
+    {
+        $stmt = $this->pdo->prepare(
+            'SELECT ' . self::COLUMNS . " FROM games WHERE mode = 'online' AND status = 'finished'"
+            . ' AND (white_id = ? OR black_id = ?) ORDER BY updated_at DESC, id LIMIT ? OFFSET ?',
+        );
+        $stmt->bindValue(1, $userId);
+        $stmt->bindValue(2, $userId);
+        $stmt->bindValue(3, max(0, $limit), \PDO::PARAM_INT);
+        $stmt->bindValue(4, max(0, $offset), \PDO::PARAM_INT);
+
+        return $this->summaries($stmt);
+    }
+
     public function unfinishedOf(string $userId, int $limit): array
     {
         $stmt = $this->pdo->prepare(

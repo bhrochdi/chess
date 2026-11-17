@@ -98,8 +98,13 @@ function renderServerSide(rootEl, game) {
   rootEl.querySelector('[data-score="b"]').textContent = dw < 0 ? '+' + (-dw) : '';
 }
 
-function renderServerMoves(el, game) {
+/* En relecture (game.replayPly défini), le coup affiché est surligné et onPick(n) reçoit le demi-coup cliqué
+   (n = 1 pour le premier coup). Sinon, le dernier coup est surligné et la liste défile jusqu'en bas. */
+function renderServerMoves(el, game, onPick) {
   el.innerHTML = '';
+  const replaying = game.replayPly !== undefined;
+  const current = replaying ? game.replayPly - 1 : game.moves.length - 1;
+  let currentEl = null;
   for (let i = 0; i < game.moves.length; i += 2) {
     const num = document.createElement('span');
     num.className = 'num';
@@ -108,12 +113,22 @@ function renderServerMoves(el, game) {
     for (let j = 0; j < 2; j++) {
       const ply = document.createElement('span');
       ply.className = 'ply';
-      if (i + j === game.moves.length - 1) ply.classList.add('latest');
-      ply.textContent = game.moves[i + j] ? sanFr(game.moves[i + j]) : '';
+      const san = game.moves[i + j];
+      ply.textContent = san ? sanFr(san) : '';
+      if (i + j === current) { ply.classList.add('latest'); currentEl = ply; }
+      if (san && onPick) {
+        ply.classList.add('pick');
+        ply.tabIndex = 0;
+        ply.setAttribute('role', 'button');
+        const n = i + j + 1;
+        ply.addEventListener('click', () => onPick(n));
+        ply.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onPick(n); } });
+      }
       el.appendChild(ply);
     }
   }
-  el.scrollTop = el.scrollHeight;
+  if (replaying && currentEl) el.scrollTop = Math.max(0, currentEl.offsetTop - el.offsetTop - el.clientHeight / 2);
+  else if (!replaying) el.scrollTop = el.scrollHeight;
 }
 
 /* receivedAt : Date.now() au moment où l'état a été reçu. */

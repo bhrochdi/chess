@@ -232,6 +232,22 @@
   .movelist .ply { color: var(--paper-ink); padding: 1px 5px; border-radius: 2px; }
   .movelist .ply.latest { background: rgba(201,155,74,.28); }
   .movelist:empty::after { content: 'En attente du premier coup…'; grid-column: 1 / -1; color: #9a8a68; font-style: italic; }
+  .movelist .ply.pick { cursor: pointer; }
+  .movelist .ply.pick:hover, .movelist .ply.pick:focus-visible { background: rgba(201,155,74,.16); outline: none; }
+  .movelist .ply.pick.latest { background: rgba(201,155,74,.34); }
+
+  /* ---------- Relecture d'une partie terminée ---------- */
+  .replaybar { display: flex; align-items: center; justify-content: center; gap: 6px; margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--paper-line); }
+  .replaybar[hidden] { display: none; }
+  .replaybar button { min-width: 38px; padding: 5px 8px; font-size: 14px; }
+  .replaybar .small { min-width: 9em; text-align: center; color: #6b5a3a; font-variant-numeric: tabular-nums; }
+
+  /* ---------- Historique ---------- */
+  .list.history { max-height: 420px; }
+  .list.history .outcome { display: inline-block; min-width: 5.2em; font-weight: 600; }
+  .list.history .outcome.win { color: var(--green); }
+  .list.history .outcome.loss { color: var(--check); }
+  .list.history .outcome.draw { color: var(--gold); }
 
   /* ---------- Chats ---------- */
   .chatbox { display: flex; flex-direction: column; }

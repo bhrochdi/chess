@@ -56,6 +56,43 @@ async function refreshLobby() {
   }
 }
 setInterval(() => { if (currentView === 'home' && !document.hidden) refreshLobby(); }, 5000);
+/* -------- Historique : parties en ligne terminées du joueur, par pages de 20 -------- */
+let historyOffset = 0;
+
+async function refreshHistory(more) {
+  const card = $('historyCard');
+  if (!currentUser) { card.hidden = true; return; }
+  const offset = more ? historyOffset : 0;
+  let data;
+  try { data = await api('games', 'history', { offset }); } catch (e) { return; }
+  card.hidden = false;
+  const box = $('historyList');
+  if (!more) box.innerHTML = '';
+  for (const g of data.games) box.appendChild(historyItem(g));
+  historyOffset = offset + data.games.length;
+  $('historyMore').hidden = !data.more;
+}
+
+function historyItem(g) {
+  const meId = currentUser ? currentUser.id : null;
+  const o = historyOutcome(g, meId);
+  const opponent = g.white && g.white.id === meId ? g.black : g.white;
+  const color = g.white && g.white.id === meId ? 'Blancs' : 'Noirs';
+  const day = new Date(g.updatedAt).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short', year: 'numeric' });
+  const item = document.createElement('div');
+  item.className = 'item';
+  item.innerHTML = '<span><span class="outcome ' + o.tone + '">' + o.label + '</span> contre <strong>' +
+    esc(opponent ? opponent.pseudo : '?') + '</strong> <span class="small">— ' + color + ', ' + esc(o.reason) +
+    (o.reason ? ', ' : '') + esc(g.result || '') + ' · ' + esc(day) + '</span></span>';
+  const b = document.createElement('button');
+  b.textContent = '↺ Revoir';
+  b.addEventListener('click', () => enterOnlineGame(g.id));
+  item.appendChild(b);
+  return item;
+}
+
+$('historyMore').addEventListener('click', () => refreshHistory(true));
+
 /* -------- Création / rejoindre -------- */
 $('btnCreateGame').addEventListener('click', async () => {
   if (!requirePseudo()) return;
