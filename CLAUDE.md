@@ -107,8 +107,8 @@ php bin/migrate.php           # applique les migrations
 - Les tests d'intégration (`composer test:integration`) vident leurs tables :
   ils visent la base `le_cercle_test` et lisent `DB_HOST`, `DB_PORT`, `DB_USER`
   et `DB_PASS` dans l'environnement. Sans ces variables, les lancer par Docker.
-- Le contrôle de style (`composer lint`) se juge dans Docker ou en CI : sur un
-  clone Windows aux fins de ligne CRLF, PHP-CS-Fixer signale tous les fichiers.
+- Fins de ligne : `.gitattributes` impose LF pour tout le texte du dépôt,
+  quel que soit `core.autocrlf` ; `composer lint` passe donc aussi sous Windows.
 - Les commandes Docker et la CI sont décrites dans `README.md`.
 
 ## Reste à faire

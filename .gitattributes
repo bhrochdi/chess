@@ -1,0 +1,11 @@
+# Fins de ligne LF pour tout le texte du dépôt, quel que soit core.autocrlf :
+# PHP-CS-Fixer (PER-CS) les exige, et les scripts .sh tournent dans des conteneurs Linux.
+* text=auto eol=lf
+
+# Binaires : jamais convertis.
+*.png binary
+*.jpg binary
+*.gif binary
+*.ico binary
+*.woff binary
+*.woff2 binary
