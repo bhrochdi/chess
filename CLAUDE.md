@@ -77,7 +77,9 @@ sans chargement de partie ni de messages.
   pull request fusionnée publie une version (étiquette `semver:major`,
   `semver:minor`, `semver:patch` ou `semver:none`).
 - Sécurité : requêtes préparées partout ; aucun identifiant versionné
-  (`api/config.php` et `.env` sont ignorés par git) ; `esc()` sur toute valeur
+  (`api/config.php` et `.env` sont ignorés par git) ; pas de script en ligne
+  ni d'`eval` dans le front, que la CSP de la page bloquerait (un nouveau
+  script va dans `public/js/` et dans `index.html`) ; `esc()` sur toute valeur
   insérée dans la page.
 - Moteur d'échecs (`src/Chess/`) : aucune modification sans tests de
   non-régression, perft compris.

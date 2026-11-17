@@ -2,7 +2,7 @@
 
 # Image de base : PHP/Apache + PDO MySQL (mbstring est déjà incluse)
 FROM php:8.3-apache AS base
-RUN docker-php-ext-install pdo_mysql
+RUN docker-php-ext-install pdo_mysql && a2enmod headers
 # Racine web : public/ ; api/ servi sous /api (voir apache-site.conf)
 COPY docker/php/apache-site.conf /etc/apache2/sites-available/000-default.conf
 

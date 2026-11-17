@@ -48,4 +48,18 @@ final class JsonResponseTest extends TestCase
 
         self::assertSame([200, '{"ok":true,"unchanged":true}'], [$response->status, $response->json]);
     }
+
+    public function testEveryApiResponseCarriesItsSecurityHeaders(): void
+    {
+        self::assertSame(
+            [
+                'Content-Type: application/json; charset=utf-8',
+                'Cache-Control: no-store',
+                'X-Content-Type-Options: nosniff',
+                "Content-Security-Policy: default-src 'none'; frame-ancestors 'none'",
+                'Referrer-Policy: no-referrer',
+            ],
+            JsonResponse::headers(),
+        );
+    }
 }
